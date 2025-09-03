@@ -1,0 +1,13 @@
+schema_version: 4.0.2
+host: 127.0.0.1
+port: 9090
+patchmatch: true
+convert_cache_dir: /workspace/models/.convert_cache
+custom_nodes_dir: /workspace/nodes
+db_dir: /workspace/databases
+download_cache_dir: /workspace/models/.download_cache
+legacy_conf_dir: /workspace/configs
+models_dir: /workspace/models
+outputs_dir: /workspace/outputs
+style_presets_dir: /workspace/style_presets
+workflow_thumbnails_dir: /workspace/workflow_thumbnails
