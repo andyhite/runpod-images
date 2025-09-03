@@ -3,7 +3,7 @@ variable "INVOKEAI_VERSION" {
 }
 
 target "invokeai" {
-  context = "./invokeai"
+  context = "./services/invokeai"
   tags = ["andyhite/invokeai:latest", "andyhite/invokeai:${INVOKEAI_VERSION}"]
   platforms = ["linux/amd64"]
   args = {

@@ -1,73 +1,99 @@
-# RunPod AI Tools Docker Images
+# RunPod AI Services
 
-Custom Docker images for running AI tools on RunPod cloud computing platform with SSH access and optimized configuration.
+Modular Docker images and deployment configurations for running AI services on RunPod cloud computing platform.
 
 ## Overview
 
-This project provides Docker images based on official AI tool CUDA images, customized for RunPod deployment with additional features like SSH access and environment variable integration. Currently supports InvokeAI with more tools planned.
+This project provides a streamlined way to build, deploy, and manage AI services on RunPod. Each service is containerized with optimized configurations and can be deployed using either manual RunPod deployment or automated dstack orchestration. Currently supports InvokeAI with more services planned.
 
 ## Features
 
-- 🚀 **AI Tool Web Interfaces** - Access tools through web browser (InvokeAI on port 9090)
+- 🚀 **Multiple Deployment Options** - Manual RunPod deployment or automated dstack orchestration
+- 🏗️ **Modular Architecture** - Each service in its own directory with all configuration files
 - 🔐 **SSH Access** - Secure shell access with public key authentication
-- 🌐 **RunPod Integration** - Optimized for RunPod cloud computing platform
 - 💾 **Persistent Storage** - Configured workspace directories for models, outputs, and configurations
-- 🐳 **Multi-platform Support** - Built for linux/amd64 architecture
-- 📦 **Version Management** - Easy base image version tracking and updates
+- 📦 **Version Management** - Centralized base image version tracking and updates
+- 🛠️ **Build Automation** - Makefile with organized targets for common operations
 
 ## Quick Start
 
-### Using Pre-built Images
+Choose your deployment method:
 
-The images are available on Docker Hub:
+### Option 1: Automated Deployment (Recommended)
 
-- `andyhite/invokeai:latest` - Latest version
-- `andyhite/invokeai:v6.5.1` - Specific version
-
-### Building Locally
+Use dstack for automated provisioning and management:
 
 ```bash
-# Show available tools and base image versions
-make versions
+# Interactive setup (prompts for API key and SSH key path)
+make setup
 
-# Build single tool
-make set-version TOOL=invokeai VERSION=v6.6.0  # Set base image version
-make build TOOL=invokeai                       # Build specific tool
-make push TOOL=invokeai                        # Build and push specific tool
+# Start dstack server (in background)
+dstack server &
 
-# Build all tools
-make build-all                                 # Build all tools locally
-make push-all                                  # Build and push all tools
+# Deploy services
+make deploy SERVICE=invokeai    # Deploy specific service
+make deploy                     # Deploy all services
 ```
 
-## Configuration
+See [docs/DSTACK.md](docs/DSTACK.md) for detailed deployment instructions.
 
-### Environment Variables
+### Option 2: Manual RunPod Deployment
 
-- `PUBLIC_KEY` - Your SSH public key for secure access
-- `INVOKEAI_ROOT` - InvokeAI root directory (default: `/invokeai`)
-- `HF_HOME` - Hugging Face cache directory
-- `MPLCONFIGDIR` - Matplotlib configuration directory
+Use pre-built images directly on RunPod:
 
-### InvokeAI Configuration
+1. **Container Image**: `andyhite/invokeai:latest`
+2. **Environment**: Set `PUBLIC_KEY` for SSH access
+3. **Ports**: Expose 9090 (web) and 22 (SSH)
+4. **Access**: Web interface at `http://<pod-ip>:9090`
 
-The image includes a pre-configured `invokeai.yaml` with optimized settings for RunPod:
+### Option 3: Build Locally
 
-- Host: `127.0.0.1`
-- Port: `9090`
-- Workspace directories mapped to `/workspace/*`
-- Patchmatch enabled for better performance
+Build and customize images yourself:
 
-## Usage on RunPod
+```bash
+# Show available services and versions
+make versions
 
-1. **Deploy Container**: Use `andyhite/invokeai:latest` as your container image
-2. **Set Environment**: Add your `PUBLIC_KEY` environment variable
-3. **Configure Ports**: Expose HTTP port 9090 for web interface and TCP port 22 for SSH
-4. **Access**:
-   - Web interface: `http://<pod-ip>:9090`
-   - SSH: `ssh root@<pod-ip>` (if PUBLIC_KEY is set)
+# Build specific service
+make build SERVICE=invokeai
+
+# Build and push to registry
+make push SERVICE=invokeai
+
+# Build all services
+make build
+```
+
+## Available Services
+
+| Service  | Description                    | Base Image                                   | Default Version | Docker Hub          |
+| -------- | ------------------------------ | -------------------------------------------- | --------------- | ------------------- |
+| invokeai | Stable Diffusion web interface | `ghcr.io/invoke-ai/invokeai:${VERSION}-cuda` | v6.5.1          | `andyhite/invokeai` |
+
+More services will be added in future updates.
 
 ## Directory Structure
+
+### Project Layout
+
+```text
+runpod/
+├── services/                   # Service directories
+│   └── invokeai/              # InvokeAI service
+│       ├── Dockerfile         # Docker image definition
+│       ├── invokeai.yaml      # Tool configuration
+│       ├── start.sh           # Entry point script
+│       └── dstack.yml         # dstack deployment config
+├── docs/                      # Documentation
+│   └── DSTACK.md             # Deployment documentation
+├── example.env                # Environment variables template
+├── versions.env               # Service version management
+├── dstack-config.template.yml # dstack server configuration template
+├── docker-bake.hcl           # Docker build configuration
+└── Makefile                  # Build and deployment automation
+```
+
+### Container Layout (InvokeAI)
 
 ```text
 /invokeai/           # InvokeAI installation
@@ -82,60 +108,68 @@ The image includes a pre-configured `invokeai.yaml` with optimized settings for 
 
 ## Development
 
-### Requirements
+### Prerequisites
 
 - Docker with Buildx support
 - Make (optional, for simplified commands)
+- uv (modern Python package manager)
+
+Install uv if you don't have it:
+
+```bash
+curl -LsSf https://astral.sh/uv/install.sh | sh
+```
+
+**Note**: dstack will be automatically installed when needed
 
 ### Version Management
 
-Base image versions are managed in `versions.env`:
+Base image versions are centrally managed in `versions.env`:
 
 ```env
 INVOKEAI_VERSION=v6.5.1
 ```
 
-This specifies which upstream base image version to build from (e.g., `ghcr.io/invoke-ai/invokeai:v6.5.1-cuda`).
+Use the Makefile to update versions:
 
-Use `make set-version TOOL=toolname VERSION=vX.Y.Z` to update base image versions.
+```bash
+# Show current versions
+make versions
 
-### Available Tools
+# Update a service version
+make set-version SERVICE=invokeai VERSION=v6.6.0
 
-| Tool     | Description                    | Base Image                                   | Default Version |
-| -------- | ------------------------------ | -------------------------------------------- | --------------- |
-| invokeai | Stable Diffusion web interface | `ghcr.io/invoke-ai/invokeai:${VERSION}-cuda` | v6.5.1          |
+# Show specific service version
+make version SERVICE=invokeai
+```
 
-More tools will be added in future updates.
+### Adding New Services
 
-### Adding New Tools
+1. Create a directory for the service under `services/` (e.g., `services/comfyui/`)
+2. Add Dockerfile, configuration, startup scripts, and `dstack.yml`
+3. Add the service's base image version to `versions.env`
+4. Add target in `docker-bake.hcl` and add it to the default group
 
-1. Create a directory for the tool (e.g., `newtool/`)
-2. Add Dockerfile, configuration, and startup scripts
-3. Add the tool's base image version to `versions.env`
-4. Update `TOOLS` list in `Makefile`
-5. Add target in `docker-bake.hcl` and add it to the default group
+**Note**: The `SERVICES` list is now automatically discovered from the `services/` directory.
 
-Example for adding a new tool called "comfyui":
+Example for adding a new service called "comfyui":
 
 ```bash
 # 1. Create directory structure
-mkdir comfyui
-# Add comfyui/Dockerfile, comfyui/start.sh, etc.
+mkdir -p services/comfyui
+# Add services/comfyui/Dockerfile, services/comfyui/start.sh, services/comfyui/dstack.yml, etc.
 
 # 2. Add to versions.env
 echo 'COMFYUI_VERSION=v1.2.3' >> versions.env
 
-# 3. Update TOOLS in Makefile
-# TOOLS := invokeai comfyui
-
-# 4. Add target in docker-bake.hcl and to default group
-# target "comfyui" { ... }
+# 3. Add target in docker-bake.hcl and to default group
+# target "comfyui" { context = "./services/comfyui" ... }
 # group "default" { targets = ["invokeai", "comfyui"] }
 
-# 5. Use the new tool
-make set-version TOOL=comfyui VERSION=v1.3.0
-make build TOOL=comfyui                        # Build just comfyui
-make build-all                                 # Build all tools including comfyui
+# 4. Use the new service
+make set-version SERVICE=comfyui VERSION=v1.3.0
+make build SERVICE=comfyui                     # Build just comfyui
+make build                                     # Build all services including comfyui
 ```
 
 ### Build Process

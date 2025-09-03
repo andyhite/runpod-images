@@ -1,0 +1,8 @@
+{
+  "recommendations": [
+    "mkhl.shfmt",
+    "timonwong.shellcheck",
+    "ms-vscode.makefile-tools",
+    "redhat.vscode-yaml"
+  ]
+}
