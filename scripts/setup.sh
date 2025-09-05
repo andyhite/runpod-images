@@ -108,8 +108,40 @@ fi
 } >.env
 
 echo
-echo "⚙️  ${bold}dstack Configuration${normal}"
+echo "⚙️  ${bold}Dependencies Installation${normal}"
 echo "────────────────────────────────────────"
+
+# Check if uv is installed
+if ! command -v uv >/dev/null 2>&1; then
+    echo "❌ ${bold}Error:${normal} uv not found. Install uv first:"
+    echo "   curl -LsSf https://astral.sh/uv/install.sh | sh" >&2
+    exit 1
+fi
+
+# Check if task is installed
+if ! command -v task >/dev/null 2>&1; then
+    echo "📦 task not found, installing..."
+
+    echo "  └─ Installing task with uv..."
+    uv tool install go-task-bin --upgrade
+    echo "✅ ${bold}task installation complete${normal}"
+else
+    echo "✅ ${bold}task found:${normal} $(which task)"
+fi
+
+# Check if dstack is installed
+if ! command -v dstack >/dev/null 2>&1; then
+    echo "📦 dstack not found, installing..."
+
+    echo "  └─ Installing dstack with uv..."
+    uv tool install 'dstack[all]' --upgrade
+    echo "✅ ${bold}dstack installation complete${normal}"
+else
+    echo "✅ ${bold}dstack found:${normal} $(which dstack)"
+fi
+
+# Setup dstack configuration
+mkdir -p ~/.dstack/server
 
 # Source the .env file to get RUNPOD_API_KEY
 if [ -f .env ]; then
@@ -121,26 +153,6 @@ if [ -z "$RUNPOD_API_KEY" ]; then
     echo "❌ ${bold}Error:${normal} RUNPOD_API_KEY environment variable is required" >&2
     exit 1
 fi
-
-# Check if dstack is installed
-if ! command -v dstack >/dev/null 2>&1; then
-    echo "📦 dstack not found, installing..."
-
-    if ! command -v uv >/dev/null 2>&1; then
-        echo "❌ ${bold}Error:${normal} uv not found. Install uv first:"
-        echo "   curl -LsSf https://astral.sh/uv/install.sh | sh" >&2
-        exit 1
-    fi
-
-    echo "  └─ Installing dstack with uv..."
-    uv tool install 'dstack[all]' --upgrade
-    echo "✅ ${bold}dstack installation complete${normal}"
-else
-    echo "✅ ${bold}dstack found:${normal} $(which dstack)"
-fi
-
-# Setup dstack configuration
-mkdir -p ~/.dstack/server
 
 # Only update config if it doesn't exist or the template is newer
 if [ ! -f ~/.dstack/server/config.yml ] || [ templates/dstack-config.template.yml -nt ~/.dstack/server/config.yml ]; then

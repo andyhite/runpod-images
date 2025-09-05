@@ -20,7 +20,7 @@ curl -LsSf https://astral.sh/uv/install.sh | sh
 
 ```bash
 # Complete setup with interactive prompts
-make setup
+task setup
 ```
 
 This will:
@@ -62,10 +62,10 @@ cp example.env .env
 
 ```bash
 # Start server (runs in foreground)
-dstack server
+task server:start
 
 # Or run in background
-dstack server &
+task server:start &
 ```
 
 ## Deployment Operations
@@ -74,27 +74,23 @@ dstack server &
 
 ```bash
 # Deploy specific service
-make deploy SERVICE=invokeai
+task invokeai:start
 
-# Deploy all available services
-make deploy
-
-# Direct dstack command
-cd services/invokeai && dstack apply -f dstack.yml
+# Direct dstack command (alternative)
+cd services/invokeai && dstack apply -f invokeai.dstack.yml
 ```
 
 ### Monitor and Manage
 
 ```bash
 # Check deployment status
-make deploy-status
+task invokeai:status
 
 # View logs
-make deploy-logs SERVICE=invokeai
+task invokeai:logs
 
 # Stop deployments
-make deploy-stop SERVICE=invokeai
-make deploy-stop
+task invokeai:stop
 ```
 
 ## Accessing Your Deployments
@@ -173,7 +169,7 @@ ssh root@<dstack-gateway-url> -p <port>
 
 ### Cost Management
 
-- Always stop deployments when not in use: `make deploy-stop`
+- Always stop deployments when not in use: `task invokeai:stop`
 - Monitor usage through RunPod console
 - Use appropriate GPU types for your workload (edit `services/*/dstack.yml`)
 

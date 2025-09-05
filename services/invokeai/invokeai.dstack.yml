@@ -2,7 +2,7 @@ name: invokeai
 type: task
 
 # Use the InvokeAI Docker image
-image: andyhite/invokeai:latest
+image: andyhite/invokeai:${INVOKEAI_VERSION:-latest}
 
 # Main port for the service (InvokeAI web interface)
 ports:

@@ -13,7 +13,7 @@ This project provides a streamlined way to build, deploy, and manage AI services
 - 🔐 **SSH Access** - Secure shell access with public key authentication
 - 💾 **Persistent Storage** - Configured workspace directories for models, outputs, and configurations
 - 📦 **Version Management** - Centralized base image version tracking and updates
-- 🛠️ **Build Automation** - Makefile with organized targets for common operations
+- 🛠️ **Build Automation** - Task runner with organized targets for common operations
 
 ## Quick Start
 
@@ -25,14 +25,13 @@ Use dstack for automated provisioning and management:
 
 ```bash
 # Interactive setup (prompts for API key and SSH key path)
-make setup
+task setup
 
 # Start dstack server (in background)
-dstack server &
+task server:start &
 
 # Deploy services
-make deploy SERVICE=invokeai    # Deploy specific service
-make deploy                     # Deploy all services
+task invokeai:start    # Deploy specific service
 ```
 
 See [docs/DSTACK.md](docs/DSTACK.md) for detailed deployment instructions.
@@ -52,16 +51,13 @@ Build and customize images yourself:
 
 ```bash
 # Show available services and versions
-make versions
+task versions
 
 # Build specific service
-make build SERVICE=invokeai
+task invokeai:build
 
 # Build and push to registry
-make push SERVICE=invokeai
-
-# Build all services
-make build
+task invokeai:push
 ```
 
 ## Available Services
@@ -91,18 +87,14 @@ runpod/
 ├── docker-bake.hcl           # Docker build configuration
 ├── templates/                 # Configuration templates
 │   └── dstack-config.template.yml # dstack server configuration template
-├── scripts/                  # All functionality as shell scripts (Makefile is thin wrapper)
-│   ├── setup.sh              # Interactive project setup
-│   ├── version.sh            # Version management with subcommands
-│   ├── docker.sh             # Docker operations with subcommands
-│   ├── deploy.sh             # Deployment management with subcommands
-│   ├── server.sh             # Server management with subcommands
-│   └── utils/                # Supporting utilities
-│       ├── core.sh           # Standard error handling functions
-│       ├── service.sh        # Service discovery, validation, and iteration
-│       ├── dstack.sh         # dstack server management functions
-│       └── env.sh            # Environment variable setup functions
-└── Makefile                  # Build and deployment automation
+├── scripts/                  # All functionality as shell scripts (Task is thin wrapper)
+│   ├── command.sh            # Command dispatcher for core functions
+│   └── core/                 # Core functionality modules
+│       ├── env.sh            # Environment variable setup functions
+│       ├── image.sh          # Docker image operations
+│       ├── server.sh         # dstack server management functions
+│       └── service.sh        # Service discovery, validation, and deployment
+└── Taskfile.yml              # Build and deployment automation
 ```
 
 ### Container Layout (InvokeAI)
@@ -123,8 +115,14 @@ runpod/
 ### Prerequisites
 
 - Docker with Buildx support
-- Make (optional, for simplified commands)
+- Task runner for build automation
 - uv (modern Python package manager)
+
+Install Task using uv:
+
+```bash
+uv tool install go-task-bin
+```
 
 Install uv if you don't have it:
 
@@ -142,17 +140,17 @@ Base image versions are centrally managed in `versions.env`:
 INVOKEAI_VERSION=v6.5.1
 ```
 
-Use the Makefile to update versions:
+Use Task to manage versions:
 
 ```bash
 # Show current versions
-make versions
+task versions
 
-# Update a service version
-make set-version SERVICE=invokeai VERSION=v6.6.0
+# Update a service version  
+task invokeai:version:v6.6.0
 
 # Show specific service version
-make version SERVICE=invokeai
+task invokeai:version
 ```
 
 ### Adding New Services
@@ -177,9 +175,8 @@ echo 'COMFYUI_VERSION=v1.2.3' >> versions.env
 # group "default" { targets = ["invokeai", "comfyui"] }
 
 # 4. Use the new service
-make set-version SERVICE=comfyui VERSION=v1.3.0
-make build SERVICE=comfyui                     # Build just comfyui
-make build                                     # Build all services including comfyui
+task comfyui:version:v1.3.0                    # Set version
+task comfyui:build                             # Build just comfyui
 ```
 
 ### Build Process
