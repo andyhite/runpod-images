@@ -1,0 +1,29 @@
+name: invokeai
+type: task
+
+# Use the InvokeAI Docker image
+image: andyhite/invokeai:latest
+
+# Main port for the service (InvokeAI web interface)
+ports:
+  - 9090
+  - 22
+
+# Environment variables
+env:
+  - PUBLIC_KEY=${PUBLIC_KEY}
+  - HF_TOKEN=${HF_TOKEN}
+  - INVOKEAI_REMOTE_API_TOKENS=${INVOKEAI_REMOTE_API_TOKENS}
+
+# Resource requirements matching RunPod L40S specs
+resources:
+  gpu: L40S:40GB..
+  cpu: 8..16
+  memory: 94GB..188GB
+
+# Spot instance policy
+spot_policy: on-demand
+
+# Start InvokeAI web interface
+commands:
+  - invokeai-web

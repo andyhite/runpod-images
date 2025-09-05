@@ -88,8 +88,20 @@ runpod/
 │   └── DSTACK.md             # Deployment documentation
 ├── example.env                # Environment variables template
 ├── versions.env               # Service version management
-├── dstack-config.template.yml # dstack server configuration template
 ├── docker-bake.hcl           # Docker build configuration
+├── templates/                 # Configuration templates
+│   └── dstack-config.template.yml # dstack server configuration template
+├── scripts/                  # All functionality as shell scripts (Makefile is thin wrapper)
+│   ├── setup.sh              # Interactive project setup
+│   ├── version.sh            # Version management with subcommands
+│   ├── docker.sh             # Docker operations with subcommands
+│   ├── deploy.sh             # Deployment management with subcommands
+│   ├── server.sh             # Server management with subcommands
+│   └── utils/                # Supporting utilities
+│       ├── core.sh           # Standard error handling functions
+│       ├── service.sh        # Service discovery, validation, and iteration
+│       ├── dstack.sh         # dstack server management functions
+│       └── env.sh            # Environment variable setup functions
 └── Makefile                  # Build and deployment automation
 ```
 
@@ -149,8 +161,6 @@ make version SERVICE=invokeai
 2. Add Dockerfile, configuration, startup scripts, and `dstack.yml`
 3. Add the service's base image version to `versions.env`
 4. Add target in `docker-bake.hcl` and add it to the default group
-
-**Note**: The `SERVICES` list is now automatically discovered from the `services/` directory.
 
 Example for adding a new service called "comfyui":
 

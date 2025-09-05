@@ -1,5 +1,5 @@
 variable "INVOKEAI_VERSION" {
-  default = "v6.5.1"
+  default = env.INVOKEAI_VERSION != "" ? env.INVOKEAI_VERSION : "v6.5.1"
 }
 
 target "invokeai" {

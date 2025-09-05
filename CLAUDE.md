@@ -16,9 +16,61 @@ This project provides Docker images for running AI services on RunPod cloud comp
 - `docs/` - Documentation
   - `DSTACK.md` - Deployment guide
 - `example.env` - Environment variables template
-- `dstack-config.template.yml` - dstack server configuration template
+- `templates/` - Configuration templates
+  - `dstack-config.template.yml` - dstack server configuration template
+- `scripts/` - Consolidated command-line tools with subcommand architecture
+  - `setup.sh` - Interactive project setup with prompts for API keys and SSH configuration
+  - `version.sh` - Version management with subcommands:
+    - `show` (default) - Show all image versions
+    - `get --service=NAME` - Show version for specific service  
+    - `set --service=NAME --version=VER` - Set version for service
+  - `docker.sh` - Docker operations with subcommands:
+    - `build` (default) - Build Docker images
+    - `push`, `load`, `clean` - Push to registry, load locally, remove images
+    - `--service=NAME` option for specific service operations
+  - `deploy.sh` - Deployment management with subcommands:
+    - `(default)` - Deploy services
+    - `status` - Show deployment status
+    - `stop` - Stop deployments
+    - `logs --service=NAME` - Show deployment logs
+    - `--service=NAME` option for specific service operations
+  - `server.sh` - dstack server management with subcommands:
+    - `start` (default) - Start server in foreground
+    - `stop`, `status`, `logs`, `ensure` - Server lifecycle operations
+  - `utils/` - Helper utilities organized by functionality
+    - `core.sh` - Standard error handling functions
+    - `service.sh` - Service discovery, validation, and iteration functions
+    - `dstack.sh` - dstack server management functions
+    - `env.sh` - Environment variable setup functions
 
 ## Key Commands
+
+All commands can be used either through Make targets or directly as scripts with subcommands.
+
+### Direct Script Usage
+
+```bash
+# Version management
+./scripts/version.sh show                                 # Show all versions
+./scripts/version.sh get --service=invokeai               # Get specific version
+./scripts/version.sh set --service=invokeai --version=v6.6.0  # Set version
+
+# Docker operations
+./scripts/docker.sh build                                 # Build all services
+./scripts/docker.sh build --service=invokeai              # Build specific service
+./scripts/docker.sh push --service=invokeai               # Push to registry
+
+# Deployment
+./scripts/deploy.sh                                       # Deploy all services
+./scripts/deploy.sh --service=invokeai                    # Deploy specific service
+./scripts/deploy.sh status                                # Show status
+./scripts/deploy.sh logs --service=invokeai               # Show logs
+
+# Server management
+./scripts/server.sh start                                 # Start server
+./scripts/server.sh status                                # Check status
+./scripts/server.sh stop                                  # Stop server
+```
 
 ### Version Management
 
