@@ -57,14 +57,7 @@ tasks:
       - sh: ./scripts/command.sh validate_service {{.SERVICE}}
         msg: "Service {{.SERVICE}} not found or not configured in versions.env"
     cmds:
-      - |
-        echo -e "\033[1;34mBuilding Docker image for {{.SERVICE}}...\033[0m"
-        if ./scripts/command.sh build_image {{.SERVICE}}; then
-          echo -e "\033[1;32m✓ Successfully built {{.SERVICE}} image\033[0m"
-        else
-          echo -e "\033[1;31m✗ Failed to build {{.SERVICE}} image\033[0m"
-          exit 1
-        fi
+      - ./scripts/command.sh build_image {{.SERVICE}}
 
   "*:push":
     desc: "Build and push Docker image for specific service"
@@ -74,14 +67,7 @@ tasks:
       - sh: ./scripts/command.sh validate_service {{.SERVICE}}
         msg: "Service {{.SERVICE}} not found or not configured in versions.env"
     cmds:
-      - |
-        echo -e "\033[1;34mBuilding and pushing Docker image for {{.SERVICE}}...\033[0m"
-        if ./scripts/command.sh push_image {{.SERVICE}}; then
-          echo -e "\033[1;32m✓ Successfully built and pushed {{.SERVICE}} image\033[0m"
-        else
-          echo -e "\033[1;31m✗ Failed to build and push {{.SERVICE}} image\033[0m"
-          exit 1
-        fi
+      - ./scripts/command.sh push_image {{.SERVICE}}
 
   "*:load":
     desc: "Build and load Docker image for specific service"
@@ -91,14 +77,7 @@ tasks:
       - sh: ./scripts/command.sh validate_service {{.SERVICE}}
         msg: "Service {{.SERVICE}} not found or not configured in versions.env"
     cmds:
-      - |
-        echo -e "\033[1;34mBuilding and loading Docker image for {{.SERVICE}}...\033[0m"
-        if ./scripts/command.sh load_image {{.SERVICE}}; then
-          echo -e "\033[1;32m✓ Successfully built and loaded {{.SERVICE}} image\033[0m"
-        else
-          echo -e "\033[1;31m✗ Failed to build and load {{.SERVICE}} image\033[0m"
-          exit 1
-        fi
+      - ./scripts/command.sh load_image {{.SERVICE}}
 
   "*:clean":
     desc: "Remove Docker image for specific service"
@@ -108,32 +87,24 @@ tasks:
       - sh: ./scripts/command.sh validate_service {{.SERVICE}}
         msg: "Service {{.SERVICE}} not found or not configured in versions.env"
     cmds:
-      - |
-        echo -e "\033[1;34mRemoving Docker images for {{.SERVICE}}...\033[0m"
-        if ./scripts/command.sh clean_image {{.SERVICE}}; then
-          echo -e "\033[1;32m✓ Successfully removed {{.SERVICE}} images\033[0m"
-        else
-          echo -e "\033[1;31m✗ Failed to remove {{.SERVICE}} images\033[0m"
-          exit 1
-        fi
+      - ./scripts/command.sh clean_image {{.SERVICE}}
 
   "*:start":
     desc: "Deploy specific service with dstack"
     deps: ["server:ensure"]
+    env:
+      INVOKEAI_REMOTE_API_TOKENS:
+        sh: ./scripts/command.sh get_remote_api_tokens
+      PUBLIC_KEY:
+        sh: ./scripts/core/env.sh get_public_key
     vars:
       SERVICE: "{{index .MATCH 0}}"
     preconditions:
       - sh: ./scripts/command.sh validate_service {{.SERVICE}}
         msg: "Service {{.SERVICE}} not found or not configured in versions.env"
     cmds:
-      - |
-        echo -e "\033[1;34mDeploying {{.SERVICE}} service with dstack...\033[0m"
-        if ./scripts/command.sh start_service {{.SERVICE}}; then
-          echo -e "\033[1;32m✓ Successfully deployed {{.SERVICE}} service\033[0m"
-        else
-          echo -e "\033[1;31m✗ Failed to deploy {{.SERVICE}} service\033[0m"
-          exit 1
-        fi
+      - ./scripts/command.sh deploy_service_volume {{.SERVICE}}
+      - ./scripts/command.sh start_service {{.SERVICE}}
 
   "*:logs":
     desc: "Show logs for specific service deployment"
@@ -145,14 +116,7 @@ tasks:
       - sh: ./scripts/command.sh check_server_status
         msg: "dstack server is not running. Run 'task server:start' first."
     cmds:
-      - |
-        echo -e "\033[1;34mRetrieving logs for {{.SERVICE}} service...\033[0m"
-        if ./scripts/command.sh get_service_logs {{.SERVICE}}; then
-          echo ""
-        else
-          echo -e "\033[1;31m✗ Failed to retrieve logs for {{.SERVICE}} service\033[0m"
-          exit 1
-        fi
+      - ./scripts/command.sh get_service_logs {{.SERVICE}}
 
   "*:stop":
     desc: "Stop specific service deployment"
@@ -164,14 +128,7 @@ tasks:
       - sh: ./scripts/command.sh check_server_status
         msg: "dstack server is not running. Run 'task server:start' first."
     cmds:
-      - |
-        echo -e "\033[1;34mStopping {{.SERVICE}} service deployment...\033[0m"
-        if ./scripts/command.sh stop_service {{.SERVICE}}; then
-          echo -e "\033[1;32m✓ Successfully stopped {{.SERVICE}} service\033[0m"
-        else
-          echo -e "\033[1;31m✗ Failed to stop {{.SERVICE}} service\033[0m"
-          exit 1
-        fi
+      - ./scripts/command.sh stop_service {{.SERVICE}}
 
   "*:version":
     desc: "Show image version for specific service"
@@ -181,14 +138,7 @@ tasks:
       - sh: ./scripts/command.sh validate_service {{.SERVICE}}
         msg: "Service {{.SERVICE}} not found or not configured in versions.env"
     cmds:
-      - |
-        VERSION=$(./scripts/command.sh get_image_version {{.SERVICE}})
-        if [ $? -eq 0 ] && [ -n "$VERSION" ]; then
-          echo -e "\033[1;32m{{.SERVICE}}: $VERSION\033[0m"
-        else
-          echo -e "\033[1;31m✗ Failed to get version for {{.SERVICE}}\033[0m"
-          exit 1
-        fi
+      - ./scripts/command.sh show_image_version {{.SERVICE}}
 
   "*:version:*":
     desc: "Set image version for a service (e.g., invokeai:version:v6.6.0)"
@@ -199,13 +149,7 @@ tasks:
       - sh: ./scripts/command.sh validate_service {{.SERVICE}}
         msg: "Service {{.SERVICE}} not found or not configured in versions.env"
     cmds:
-      - |
-        if ./scripts/command.sh set_image_version {{.SERVICE}}={{.VERSION}}; then
-          echo -e "\033[1;32m✓ Successfully set {{.SERVICE}} version to {{.VERSION}}\033[0m"
-        else
-          echo -e "\033[1;31m✗ Failed to set {{.SERVICE}} version\033[0m"
-          exit 1
-        fi
+      - ./scripts/command.sh set_image_version {{.SERVICE}}={{.VERSION}}
 
   "*:status":
     desc: "Show deployment status for specific service"
@@ -216,43 +160,7 @@ tasks:
       - sh: ./scripts/command.sh validate_service {{.SERVICE}}
         msg: "Service {{.SERVICE}} not found or not configured in versions.env"
     cmds:
-      - |
-        STATUS=$(./scripts/command.sh get_service_status {{.SERVICE}} || echo "not_deployed")
-        case "$STATUS" in
-          "running"|"Running"|"RUNNING")
-            echo -e "\033[1;32m✓ {{.SERVICE}}: Running\033[0m"
-            ;;
-          "pending"|"Pending"|"PENDING")
-            echo -e "\033[1;33m⏳ {{.SERVICE}}: Pending\033[0m"
-            ;;
-          "failed"|"Failed"|"FAILED"|"error"|"Error"|"ERROR")
-            echo -e "\033[1;31m✗ {{.SERVICE}}: Failed\033[0m"
-            ;;
-          "aborted"|"Aborted"|"ABORTED")
-            echo -e "\033[1;31m⏹ {{.SERVICE}}: Aborted\033[0m"
-            ;;
-          "terminated"|"Terminated"|"TERMINATED")
-            echo -e "\033[1;31m⏹ {{.SERVICE}}: Terminated\033[0m"
-            ;;
-          "done"|"Done"|"DONE")
-            echo -e "\033[1;32m✅ {{.SERVICE}}: Done\033[0m"
-            ;;
-          "stopped"|"Stopped"|"STOPPED")
-            echo -e "\033[1;37m⏸ {{.SERVICE}}: Stopped\033[0m"
-            ;;
-          "exited"|"Exited"|"EXITED")
-            echo -e "\033[1;31m⏹ {{.SERVICE}}: Exited\033[0m"
-            ;;
-          "not_deployed")
-            echo -e "\033[1;33m⚠ {{.SERVICE}}: Not deployed\033[0m"
-            ;;
-          "api_unavailable")
-            echo -e "\033[1;31m🔌 {{.SERVICE}}: API unavailable (server not running?)\033[0m"
-            ;;
-          *)
-            echo -e "\033[1;36m? {{.SERVICE}}: $STATUS\033[0m"
-            ;;
-        esac
+      - ./scripts/command.sh show_service_status {{.SERVICE}}
 
   #================================================================================
   # Server Management
@@ -267,42 +175,20 @@ tasks:
   "server:start":
     desc: "Start dstack server in foreground"
     cmds:
-      - |
-        echo -e "\033[1;34mStarting dstack server...\033[0m"
-        ./scripts/command.sh start_server
+      - ./scripts/command.sh start_server
 
   "server:stop":
     desc: "Stop background dstack server"
     cmds:
-      - |
-        echo -e "\033[1;34mStopping dstack server...\033[0m"
-        if ./scripts/command.sh stop_server; then
-          echo -e "\033[1;32m✓ Successfully stopped dstack server\033[0m"
-        else
-          echo -e "\033[1;33m⚠ Server was not running or failed to stop\033[0m"
-        fi
+      - ./scripts/command.sh stop_server
 
   "server:status":
     desc: "Check dstack server status"
     cmds:
-      - |
-        echo -e "\033[1;34mChecking dstack server status...\033[0m"
-        if ./scripts/command.sh check_server_status; then
-          echo -e "\033[1;32m✓ dstack server is running\033[0m"
-        else
-          echo -e "\033[1;31m✗ dstack server is not running\033[0m"
-          exit 1
-        fi
+      - ./scripts/command.sh get_server_status
 
   "server:logs":
     desc: "Show dstack server logs"
     cmds:
-      - |
-        echo -e "\033[1;34mRetrieving dstack server logs...\033[0m"
-        if ./scripts/command.sh get_server_logs; then
-          echo ""
-        else
-          echo -e "\033[1;31m✗ Failed to retrieve server logs\033[0m"
-          exit 1
-        fi
+      - ./scripts/command.sh get_server_logs
 

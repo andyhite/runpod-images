@@ -1,16 +1,55 @@
+# =============================================================================
+# Shared Variables and Functions
+# =============================================================================
+
+variable "REGISTRY" {
+  default = "andyhite"
+}
+
+variable "PLATFORM" {
+  default = "linux/amd64"
+}
+
+# Function to generate common tags for services
+function "service_tags" {
+  params = [service, version]
+  result = ["${REGISTRY}/${service}:latest", "${REGISTRY}/${service}:${version}"]
+}
+
+# Common build arguments
+function "common_args" {
+  params = [version]
+  result = {
+    VERSION = version
+  }
+}
+
+# =============================================================================
+# Service-Specific Variables and Targets
+# =============================================================================
+
+# InvokeAI Configuration
 variable "INVOKEAI_VERSION" {
-  default = env.INVOKEAI_VERSION != "" ? env.INVOKEAI_VERSION : "v6.5.1"
+  default = "v6.5.1"
 }
 
 target "invokeai" {
   context = "./services/invokeai"
-  tags = ["andyhite/invokeai:latest", "andyhite/invokeai:${INVOKEAI_VERSION}"]
-  platforms = ["linux/amd64"]
-  args = {
-    VERSION = "${INVOKEAI_VERSION}"
-  }
+  tags = service_tags("invokeai", INVOKEAI_VERSION)
+  platforms = [PLATFORM]
+  args = common_args(INVOKEAI_VERSION)
 }
 
+# =============================================================================
+# Build Groups
+# =============================================================================
+
+# Default group - builds all services
 group "default" {
+  targets = ["invokeai"]
+}
+
+# Service-specific groups
+group "invokeai" {
   targets = ["invokeai"]
 }

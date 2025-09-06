@@ -27,19 +27,62 @@ validate_service() {
     fi
 }
 
+deploy_service_volume() {
+    local service="$1"
+    local volume_config="services/$service/volume.dstack.yml"
+
+    if [ -f "$volume_config" ]; then
+        echo -e "\033[1;34m📦 Found volume configuration for $service, deploying volume...\033[0m"
+        if dstack apply -f "$volume_config" -y; then
+            echo -e "\033[1;32m✅ Volume deployed successfully\033[0m"
+            return 0
+        else
+            echo -e "\033[1;31m❌ Failed to deploy volume\033[0m"
+            return 1
+        fi
+    else
+        echo -e "\033[1;36m📦 No volume configuration found for $service\033[0m"
+        return 0
+    fi
+}
+
 start_service() {
     local service="$1"
-    dstack apply -f "services/$service/$service.dstack.yml"
+
+    # Deploy the service
+    echo -e "\033[1;36m🚀 Deploying $service service...\033[0m"
+    if dstack apply -f "services/$service/$service.dstack.yml"; then
+        echo -e "\033[1;32m✓ Successfully deployed $service service\033[0m"
+        return 0
+    else
+        echo -e "\033[1;31m✗ Failed to deploy $service service\033[0m"
+        return 1
+    fi
 }
 
 stop_service() {
     local service="$1"
-    dstack stop "$service" 2>/dev/null || true
+
+    echo -e "\033[1;34mStopping $service service deployment...\033[0m"
+    if dstack stop "$service" 2>/dev/null; then
+        echo -e "\033[1;32m✓ Successfully stopped $service service\033[0m"
+        return 0
+    else
+        echo -e "\033[1;31m✗ Failed to stop $service service\033[0m"
+        return 1
+    fi
 }
 
 get_service_logs() {
     local service="$1"
-    dstack logs "$service"
+
+    echo -e "\033[1;34mRetrieving logs for $service service...\033[0m"
+    if dstack logs "$service"; then
+        return 0
+    else
+        echo -e "\033[1;31m✗ Failed to retrieve logs for $service service\033[0m"
+        return 1
+    fi
 }
 
 get_service_status() {
@@ -83,4 +126,46 @@ get_service_status() {
         echo "not_deployed"
         return 1
     fi
+}
+
+show_service_status() {
+    local service="$1"
+    local status
+    status=$(get_service_status "$service" || echo "not_deployed")
+
+    case "$status" in
+    "running" | "Running" | "RUNNING")
+        echo -e "\033[1;32m✓ $service: Running\033[0m"
+        ;;
+    "pending" | "Pending" | "PENDING")
+        echo -e "\033[1;33m⏳ $service: Pending\033[0m"
+        ;;
+    "failed" | "Failed" | "FAILED" | "error" | "Error" | "ERROR")
+        echo -e "\033[1;31m✗ $service: Failed\033[0m"
+        ;;
+    "aborted" | "Aborted" | "ABORTED")
+        echo -e "\033[1;31m⏹ $service: Aborted\033[0m"
+        ;;
+    "terminated" | "Terminated" | "TERMINATED")
+        echo -e "\033[1;31m⏹ $service: Terminated\033[0m"
+        ;;
+    "done" | "Done" | "DONE")
+        echo -e "\033[1;32m✅ $service: Done\033[0m"
+        ;;
+    "stopped" | "Stopped" | "STOPPED")
+        echo -e "\033[1;37m⏸ $service: Stopped\033[0m"
+        ;;
+    "exited" | "Exited" | "EXITED")
+        echo -e "\033[1;31m⏹ $service: Exited\033[0m"
+        ;;
+    "not_deployed")
+        echo -e "\033[1;33m⚠ $service: Not deployed\033[0m"
+        ;;
+    "api_unavailable")
+        echo -e "\033[1;31m🔌 $service: API unavailable (server not running?)\033[0m"
+        ;;
+    *)
+        echo -e "\033[1;36m? $service: $status\033[0m"
+        ;;
+    esac
 }

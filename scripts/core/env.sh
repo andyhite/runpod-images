@@ -1,6 +1,6 @@
 #!/bin/bash
 
-generate_remote_api_tokens() {
+get_remote_api_tokens() {
     local tokens='[]'
 
     if [ -n "$HF_TOKEN" ]; then
@@ -14,7 +14,7 @@ generate_remote_api_tokens() {
     echo "$tokens" | jq -c .
 }
 
-setup_ssh_key() {
+get_ssh_key() {
     if [ -n "$PUBLIC_KEY_FILE" ]; then
         local expanded_path
         expanded_path=$(eval echo "$PUBLIC_KEY_FILE")
