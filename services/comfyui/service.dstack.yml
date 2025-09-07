@@ -1,21 +1,20 @@
-name: invokeai
+name: comfyui
 type: task
 
 image: andyhite/comfyui:latest
 
 commands:
-  - invokeai-web
+  - cd /ComfyUI && python main.py --listen 0.0.0.0
 
 ports:
-  - 9090
+  - 8188
 
 volumes:
-  - name: invokeai-data
+  - name: comfyui-data
     path: /workspace
 
 env:
   - HF_TOKEN
-  - INVOKEAI_REMOTE_API_TOKENS
 
 backends:
   - runpod

@@ -1,5 +1,5 @@
 type: volume
-name: invokeai-data
+name: comfyui-data
 backend: runpod
 region: US-TX-3
-size: 100
+size: 200
