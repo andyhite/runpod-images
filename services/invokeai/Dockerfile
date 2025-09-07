@@ -1,12 +1,10 @@
-ARG VERSION=v6.5.1
+ARG VERSION
 
-FROM ghcr.io/invoke-ai/invokeai:${VERSION}-cuda
+FROM ghcr.io/invoke-ai/invokeai:v${VERSION}-cuda
 
-WORKDIR /invokeai
+WORKDIR /
 
-COPY ./start.sh .
-COPY ./invokeai.yaml .
-
-RUN chmod +x ./start.sh
+COPY --chmod=755 ./start.sh .
+COPY ./invokeai.yaml ./invokeai
 
 ENTRYPOINT ["./start.sh"]

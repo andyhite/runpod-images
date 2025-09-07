@@ -51,7 +51,7 @@ start_service() {
 
     # Deploy the service
     echo -e "\033[1;36m🚀 Deploying $service service...\033[0m"
-    if dstack apply -f "services/$service/$service.dstack.yml"; then
+    if dstack apply -f "services/$service/service.dstack.yml"; then
         echo -e "\033[1;32m✓ Successfully deployed $service service\033[0m"
         return 0
     else

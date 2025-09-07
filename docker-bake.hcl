@@ -13,7 +13,7 @@ variable "PLATFORM" {
 # Function to generate common tags for services
 function "service_tags" {
   params = [service, version]
-  result = ["${REGISTRY}/${service}:latest", "${REGISTRY}/${service}:${version}"]
+  result = ["${REGISTRY}/${service}:latest", "${REGISTRY}/${service}:v${version}"]
 }
 
 # Common build arguments
@@ -30,7 +30,7 @@ function "common_args" {
 
 # InvokeAI Configuration
 variable "INVOKEAI_VERSION" {
-  default = "v6.5.1"
+  default = "6.5.1"
 }
 
 target "invokeai" {
@@ -40,16 +40,28 @@ target "invokeai" {
   args = common_args(INVOKEAI_VERSION)
 }
 
+# ComfyUI Configuration
+variable "COMFYUI_VERSION" {
+  default = "0.3.57"
+}
+
+target "comfyui" {
+  context = "./services/comfyui"
+  tags = service_tags("comfyui", COMFYUI_VERSION)
+  platforms = [PLATFORM]
+  args = common_args(COMFYUI_VERSION)
+}
+
 # =============================================================================
 # Build Groups
 # =============================================================================
 
 # Default group - builds all services
 group "default" {
-  targets = ["invokeai"]
+  targets = ["invokeai", "comfyui"]
 }
 
 # Service-specific groups
 group "invokeai" {
-  targets = ["invokeai"]
+  targets = ["invokeai", "comfyui"]
 }

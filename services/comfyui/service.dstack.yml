@@ -1,0 +1,29 @@
+name: invokeai
+type: task
+
+image: andyhite/comfyui:latest
+
+commands:
+  - invokeai-web
+
+ports:
+  - 9090
+
+volumes:
+  - name: invokeai-data
+    path: /workspace
+
+env:
+  - HF_TOKEN
+  - INVOKEAI_REMOTE_API_TOKENS
+
+backends:
+  - runpod
+
+regions:
+  - US-TX-3
+
+resources:
+  gpu: L40S
+
+spot_policy: on-demand
