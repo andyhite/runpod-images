@@ -1,5 +1,0 @@
-type: volume
-name: comfyui-data
-backend: runpod
-region: US-TX-3
-size: 200
