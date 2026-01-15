@@ -47,6 +47,18 @@ status:                         ## Show service status
 logs:                           ## Tail service logs
 	dstack logs $(SERVICE) -f
 
+# ============ Validation Commands ============
+.PHONY: offers plan
+
+offers:                         ## Show available GPU offers and pricing
+	dstack offer --gpu RTX5090 --region $(DSTACK_REGION) --max-offers 10
+
+plan:                           ## Show deployment plan (dry-run, no confirm)
+	@echo "Service deployment plan:"
+	@PUBLIC_KEY=$$(cat $(PUBLIC_KEY_FILE)) \
+	RUNPOD_REGISTRY_IMAGE=$(FULL_IMAGE) \
+	dstack apply -f $(SERVICE_DIR)/service.dstack.yml
+
 # ============ Utilities ============
 .PHONY: ssh clean help
 
