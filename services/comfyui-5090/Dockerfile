@@ -31,10 +31,10 @@ RUN --mount=type=cache,target=/var/cache/apt,sharing=locked \
     && dpkg -i cuda-keyring_1.1-1_all.deb \
     && apt-get update \
     && apt-get install -y --no-install-recommends \
-    cuda-minimal-build-13-0 \
-    libcublas-dev-13-0 \
-    libcusolver-dev-13-0 \
-    libcusparse-dev-13-0 \
+    cuda-minimal-build-12-8 \
+    libcublas-dev-12-8 \
+    libcusolver-dev-12-8 \
+    libcusparse-dev-12-8 \
     ninja-build \
     && rm cuda-keyring_1.1-1_all.deb
 
@@ -50,10 +50,10 @@ ENV PATH=/usr/local/cuda/bin:${PATH}
 ENV LD_LIBRARY_PATH=/usr/local/cuda/lib64
 ENV LIBRARY_PATH=/usr/local/cuda/lib64/stubs:${LIBRARY_PATH}
 
-# Install PyTorch (stable CUDA 13.0 build for optimized FP8/FP4 quantization)
+# Install PyTorch (CUDA 12.8 build)
 RUN --mount=type=cache,target=/root/.cache/pip \
     python3.13 -m pip install \
-    torch==2.9.1 torchvision==0.24.1 torchaudio==2.9.1 --index-url https://download.pytorch.org/whl/cu130
+    torch torchvision torchaudio --index-url https://download.pytorch.org/whl/cu128
 
 # Install Triton and SageAttention for accelerated attention (Blackwell/RTX 5090 optimized)
 # SageAttention 2.x and 3 (Blackwell) must be built from source
@@ -71,11 +71,6 @@ RUN --mount=type=cache,target=/root/.cache/pip \
     sed -i 's/cc_major, cc_minor = torch.cuda.get_device_capability()/cc_major, cc_minor = 12, 0  # Blackwell RTX 5090/' setup.py && \
     python3.13 -m pip install --no-build-isolation . && \
     rm -rf /tmp/SageAttention
-
-# Install FlashAttention-3 (Blackwell-optimized attention for video generation)
-# Provides alternative high-performance attention that some video models prefer
-RUN --mount=type=cache,target=/root/.cache/pip \
-    python3.13 -m pip install flash-attn --no-build-isolation
 
 # ============================================================================
 # Stage 2: Builder - ComfyUI core (changes more frequently)
@@ -116,8 +111,8 @@ ENV IMAGEIO_FFMPEG_EXE=/usr/bin/ffmpeg
 # CUDA optimizations for better memory allocation and large model support
 ENV CUDA_MALLOC_ASYNC=1
 # expandable_segments reduces fragmentation for large video tensors
-# garbage_collection_threshold triggers cleanup at 80% VRAM usage
-ENV PYTORCH_CUDA_ALLOC_CONF=expandable_segments:True,garbage_collection_threshold:0.8
+# garbage_collection_threshold triggers cleanup at 70% for Wan 14B headroom
+ENV PYTORCH_ALLOC_CONF=expandable_segments:True,garbage_collection_threshold:0.7
 
 # Enable TF32 for faster matmul on Blackwell tensor cores
 ENV TORCH_ALLOW_TF32_CUBLAS_OVERRIDE=1
@@ -131,7 +126,7 @@ ENV TORCH_CUDNN_V8_API_ENABLED=1
 ENV TORCHINDUCTOR_CACHE_DIR=/workspace/.torch_compile_cache
 ENV TORCH_COMPILE_DEBUG=0
 
-# Update and install runtime dependencies, CUDA 13.0, and common tools
+# Update and install runtime dependencies, CUDA 12.8, and common tools
 RUN --mount=type=cache,target=/var/cache/apt,sharing=locked \
     --mount=type=cache,target=/var/lib/apt,sharing=locked \
     apt-get update && \
@@ -168,7 +163,7 @@ RUN --mount=type=cache,target=/var/cache/apt,sharing=locked \
     && wget https://developer.download.nvidia.com/compute/cuda/repos/ubuntu2204/x86_64/cuda-keyring_1.1-1_all.deb \
     && dpkg -i cuda-keyring_1.1-1_all.deb \
     && apt-get update \
-    && apt-get install -y --no-install-recommends cuda-minimal-build-13-0 \
+    && apt-get install -y --no-install-recommends cuda-minimal-build-12-8 \
     && apt-get install -y --no-install-recommends ffmpeg \
     && rm cuda-keyring_1.1-1_all.deb
 

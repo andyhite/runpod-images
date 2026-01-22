@@ -4,6 +4,9 @@ set -e
 export COMFYUI_DIR="/app/ComfyUI"
 export WORKSPACE_DIR="/workspace"
 export FILEBROWSER_CONFIG="/root/.config/filebrowser/config.json"
+
+# ComfyUI-Manager security level (weak allows pip installs from manager)
+export CM_SECURITY_LEVEL=weak
 export DB_FILE="/workspace/filebrowser.db"
 
 # ---------------------------------------------------------------------------- #
@@ -68,6 +71,10 @@ export_env_vars() {
 
     echo 'source /etc/rp_environment' >>~/.bashrc
     echo 'source /etc/rp_environment' >>/etc/bash.bashrc
+
+    # Fix ls colors - remove background color on directories
+    echo 'export LS_COLORS="$LS_COLORS:ow=34:tw=34"' >>~/.bashrc
+    echo 'export LS_COLORS="$LS_COLORS:ow=34:tw=34"' >>/etc/bash.bashrc
 
     chmod 644 "$ENV_FILE" "$PAM_ENV_FILE"
     chmod 600 "$SSH_ENV_DIR"
@@ -299,7 +306,7 @@ fi
 # Start ComfyUI with arguments from file
 cd "$COMFYUI_DIR"
 
-# Parse arguments safely into an array to prevent word splitting issues
-mapfile -t ARGS_ARRAY < <(grep -v '^#' "$ARGS_FILE" | grep -v '^$')
-echo "Starting ComfyUI with arguments: ${ARGS_ARRAY[*]}"
-python3 main.py "${ARGS_ARRAY[@]}" 2>&1 | tee /workspace/comfyui.log
+# Parse arguments from file (strip comments and blank lines, join into single line)
+ARGS=$(grep -v '^#' "$ARGS_FILE" | grep -v '^$' | tr '\n' ' ')
+echo "Starting ComfyUI with arguments: $ARGS"
+python3 main.py $ARGS 2>&1 | tee /workspace/comfyui.log
