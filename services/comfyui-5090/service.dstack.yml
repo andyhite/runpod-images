@@ -1,21 +1,21 @@
 type: task
 name: comfyui-5090
 
-image: ${RUNPOD_REGISTRY_IMAGE}
+image: ${{ env.RUNPOD_REGISTRY_IMAGE }}
 
 env:
-  HF_TOKEN: ${HF_TOKEN}
-  CIVITAI_TOKEN: ${CIVITAI_TOKEN}
-  PUBLIC_KEY: ${PUBLIC_KEY}
+  HF_TOKEN: ${{ env.HF_TOKEN }}
+  CIVITAI_TOKEN: ${{ env.CIVITAI_TOKEN }}
+  PUBLIC_KEY: ${{ env.PUBLIC_KEY }}
 
 resources:
   gpu:
-    name: [RTX5090, L40S]
+    name: ["RTX5090", "L40S"]
   disk: 50GB
 
 spot_policy: auto
 
-regions: [${DSTACK_REGION}]
+regions: ["${{ env.DSTACK_REGION }}"]
 
 volumes:
   - name: comfy-ui

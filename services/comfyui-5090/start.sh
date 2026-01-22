@@ -1,13 +1,13 @@
 #!/bin/bash
-set -e # Exit the script if any statement returns a non-true return value
+set -e
 
-export COMFYUI_DIR="/workspace/runpod-slim/ComfyUI"
-export VENV_DIR="$COMFYUI_DIR/.venv-cu128"
+export COMFYUI_DIR="/app/ComfyUI"
+export WORKSPACE_DIR="/workspace"
 export FILEBROWSER_CONFIG="/root/.config/filebrowser/config.json"
-export DB_FILE="/workspace/runpod-slim/filebrowser.db"
+export DB_FILE="/workspace/filebrowser.db"
 
 # ---------------------------------------------------------------------------- #
-#                          Function Definitions                                  #
+#                          Function Definitions                                #
 # ---------------------------------------------------------------------------- #
 
 # Setup SSH with optional key or random password
@@ -45,50 +45,35 @@ setup_ssh() {
 export_env_vars() {
     echo "Exporting environment variables..."
 
-    # Create environment files
     ENV_FILE="/etc/environment"
     PAM_ENV_FILE="/etc/security/pam_env.conf"
     SSH_ENV_DIR="/root/.ssh/environment"
 
-    # Backup original files
     cp "$ENV_FILE" "${ENV_FILE}.bak" 2>/dev/null || true
     cp "$PAM_ENV_FILE" "${PAM_ENV_FILE}.bak" 2>/dev/null || true
 
-    # Clear files
     true >"$ENV_FILE"
     true >"$PAM_ENV_FILE"
     mkdir -p /root/.ssh
     true >"$SSH_ENV_DIR"
 
-    # Export to multiple locations for maximum compatibility
     printenv | grep -E '^RUNPOD_|^PATH=|^_=|^CUDA|^LD_LIBRARY_PATH|^PYTHONPATH' | while read -r line; do
-        # Get variable name and value
         name=$(echo "$line" | cut -d= -f1)
         value=$(echo "$line" | cut -d= -f2-)
-
-        # Add to /etc/environment (system-wide)
         echo "$name=\"$value\"" >>"$ENV_FILE"
-
-        # Add to PAM environment
         echo "$name DEFAULT=\"$value\"" >>"$PAM_ENV_FILE"
-
-        # Add to SSH environment file
         echo "$name=\"$value\"" >>"$SSH_ENV_DIR"
-
-        # Add to current shell
         echo "export $name=\"$value\"" >>/etc/rp_environment
     done
 
-    # Add sourcing to shell startup files
     echo 'source /etc/rp_environment' >>~/.bashrc
     echo 'source /etc/rp_environment' >>/etc/bash.bashrc
 
-    # Set permissions
     chmod 644 "$ENV_FILE" "$PAM_ENV_FILE"
     chmod 600 "$SSH_ENV_DIR"
 }
 
-# Start Jupyter Lab server for remote access
+# Start Jupyter Lab server
 start_jupyter() {
     mkdir -p /workspace
     echo "Starting Jupyter Lab on port 8888..."
@@ -102,12 +87,103 @@ start_jupyter() {
         --ServerApp.root_dir=/workspace \
         --ServerApp.terminado_settings='{"shell_command":["/bin/bash"]}' \
         --IdentityProvider.token="${JUPYTER_PASSWORD:-}" \
-        --ServerApp.allow_origin=* &>/jupyter.log &
+        --ServerApp.allow_origin=* &>/workspace/jupyter.log &
     echo "Jupyter Lab started"
 }
 
+# Setup workspace directories
+setup_workspace() {
+    echo "Setting up workspace directories..."
+
+    # Create model directories (matching extra_model_paths.yaml)
+    mkdir -p "$WORKSPACE_DIR/models/checkpoints"
+    mkdir -p "$WORKSPACE_DIR/models/clip"
+    mkdir -p "$WORKSPACE_DIR/models/clip_vision"
+    mkdir -p "$WORKSPACE_DIR/models/configs"
+    mkdir -p "$WORKSPACE_DIR/models/controlnet"
+    mkdir -p "$WORKSPACE_DIR/models/diffusers"
+    mkdir -p "$WORKSPACE_DIR/models/diffusion_models"
+    mkdir -p "$WORKSPACE_DIR/models/embeddings"
+    mkdir -p "$WORKSPACE_DIR/models/gligen"
+    mkdir -p "$WORKSPACE_DIR/models/hypernetworks"
+    mkdir -p "$WORKSPACE_DIR/models/loras"
+    mkdir -p "$WORKSPACE_DIR/models/style_models"
+    mkdir -p "$WORKSPACE_DIR/models/unet"
+    mkdir -p "$WORKSPACE_DIR/models/upscale_models"
+    mkdir -p "$WORKSPACE_DIR/models/vae"
+    mkdir -p "$WORKSPACE_DIR/models/vae_approx"
+
+    # Create other workspace directories
+    mkdir -p "$WORKSPACE_DIR/output"
+    mkdir -p "$WORKSPACE_DIR/input"
+    mkdir -p "$WORKSPACE_DIR/user/default"
+    mkdir -p "$WORKSPACE_DIR/custom_nodes"
+}
+
+# Symlink ComfyUI directories to workspace for persistence
+setup_symlinks() {
+    echo "Setting up symlinks to workspace..."
+
+    # Symlink models directory
+    if [ ! -L "$COMFYUI_DIR/models" ]; then
+        rm -rf "$COMFYUI_DIR/models"
+        ln -sf "$WORKSPACE_DIR/models" "$COMFYUI_DIR/models"
+        echo "Symlinked models -> $WORKSPACE_DIR/models"
+    fi
+
+    # Symlink output directory
+    if [ ! -L "$COMFYUI_DIR/output" ]; then
+        rm -rf "$COMFYUI_DIR/output"
+        ln -sf "$WORKSPACE_DIR/output" "$COMFYUI_DIR/output"
+        echo "Symlinked output -> $WORKSPACE_DIR/output"
+    fi
+
+    # Symlink input directory
+    if [ ! -L "$COMFYUI_DIR/input" ]; then
+        rm -rf "$COMFYUI_DIR/input"
+        ln -sf "$WORKSPACE_DIR/input" "$COMFYUI_DIR/input"
+        echo "Symlinked input -> $WORKSPACE_DIR/input"
+    fi
+
+    # Symlink user directory
+    if [ ! -L "$COMFYUI_DIR/user" ]; then
+        rm -rf "$COMFYUI_DIR/user"
+        ln -sf "$WORKSPACE_DIR/user" "$COMFYUI_DIR/user"
+        echo "Symlinked user -> $WORKSPACE_DIR/user"
+    fi
+
+    # Symlink custom_nodes directory
+    if [ ! -L "$COMFYUI_DIR/custom_nodes" ]; then
+        # Sync built-in nodes to workspace without overwriting existing files
+        echo "Syncing built-in custom nodes to workspace..."
+        rsync -a --ignore-existing "$COMFYUI_DIR/custom_nodes/" "$WORKSPACE_DIR/custom_nodes/"
+        rm -rf "$COMFYUI_DIR/custom_nodes"
+        ln -sf "$WORKSPACE_DIR/custom_nodes" "$COMFYUI_DIR/custom_nodes"
+        echo "Symlinked custom_nodes -> $WORKSPACE_DIR/custom_nodes"
+    fi
+}
+
+# Update ComfyUI
+update_comfyui() {
+    echo "Updating ComfyUI..."
+    cd "$COMFYUI_DIR"
+    git pull || echo "Warning: git pull failed, continuing with existing version"
+
+    # Update built-in custom nodes
+    for node_dir in "$COMFYUI_DIR/custom_nodes"/*/; do
+        if [ -d "$node_dir/.git" ]; then
+            node_name=$(basename "$node_dir")
+            echo "Updating custom node: $node_name"
+            cd "$node_dir"
+            git pull || echo "Warning: Failed to update $node_name"
+        fi
+    done
+
+    cd "$COMFYUI_DIR"
+}
+
 # ---------------------------------------------------------------------------- #
-#                               Main Program                                     #
+#                               Main Program                                   #
 # ---------------------------------------------------------------------------- #
 
 # Setup environment
@@ -117,156 +193,50 @@ export_env_vars
 # Initialize FileBrowser if not already done
 if [ ! -f "$DB_FILE" ]; then
     echo "Initializing FileBrowser..."
-    filebrowser config init
-    filebrowser config set --address 0.0.0.0
-    filebrowser config set --port 8080
-    filebrowser config set --root /workspace
-    filebrowser config set --auth.method=json
-    filebrowser users add admin adminadmin12 --perm.admin
+    filebrowser -d "$DB_FILE" config init
+    filebrowser -d "$DB_FILE" config set --address 0.0.0.0
+    filebrowser -d "$DB_FILE" config set --port 8080
+    filebrowser -d "$DB_FILE" config set --root /workspace
+    filebrowser -d "$DB_FILE" config set --auth.method=json
+    filebrowser -d "$DB_FILE" users add admin adminadmin12 --perm.admin
 else
     echo "Using existing FileBrowser configuration..."
 fi
 
 # Start FileBrowser
 echo "Starting FileBrowser on port 8080..."
-nohup filebrowser &>/filebrowser.log &
+nohup filebrowser -d "$DB_FILE" &>/workspace/filebrowser.log &
 
 start_jupyter
 
+# Setup workspace, symlinks, and update ComfyUI
+setup_workspace
+setup_symlinks
+update_comfyui
+
 # Create default comfyui_args.txt if it doesn't exist
-ARGS_FILE="/workspace/runpod-slim/comfyui_args.txt"
+ARGS_FILE="$WORKSPACE_DIR/comfyui_args.txt"
 if [ ! -f "$ARGS_FILE" ]; then
-    echo "# Add your custom ComfyUI arguments here (one per line)" >"$ARGS_FILE"
-    echo "Created empty ComfyUI arguments file at $ARGS_FILE"
+    cat > "$ARGS_FILE" << 'EOF'
+# ComfyUI launch arguments (one per line)
+# Edit these to customize your ComfyUI instance
+# Changes take effect on next container restart
+
+# Network settings
+--listen 0.0.0.0
+--port 8188
+
+# Performance optimizations for RTX 5090
+--use-sage-attention
+--highvram
+--fast
+EOF
+    echo "Created ComfyUI arguments file at $ARGS_FILE"
 fi
 
-# Setup ComfyUI if needed
-if [ ! -d "$COMFYUI_DIR" ] || [ ! -d "$VENV_DIR" ]; then
-    echo "First time setup: Installing ComfyUI and dependencies..."
+# Start ComfyUI with arguments from file
+cd "$COMFYUI_DIR"
 
-    # Clone ComfyUI if not present
-    if [ ! -d "$COMFYUI_DIR" ]; then
-        cd /workspace/runpod-slim
-        git clone https://github.com/comfyanonymous/ComfyUI.git
-    fi
-
-    # Install ComfyUI-Manager if not present
-    if [ ! -d "$COMFYUI_DIR/custom_nodes/ComfyUI-Manager" ]; then
-        echo "Installing ComfyUI-Manager..."
-        mkdir -p "$COMFYUI_DIR/custom_nodes"
-        cd "$COMFYUI_DIR/custom_nodes"
-        git clone https://github.com/ltdrdata/ComfyUI-Manager.git
-    fi
-
-    # Install additional custom nodes
-    CUSTOM_NODES=(
-        "https://github.com/kijai/ComfyUI-KJNodes"
-        "https://github.com/MoonGoblinDev/Civicomfy"
-        "https://github.com/MadiatorLabs/ComfyUI-RunpodDirect"
-    )
-
-    for repo in "${CUSTOM_NODES[@]}"; do
-        repo_name=$(basename "$repo")
-        if [ ! -d "$COMFYUI_DIR/custom_nodes/$repo_name" ]; then
-            echo "Installing $repo_name..."
-            cd "$COMFYUI_DIR/custom_nodes"
-            git clone "$repo"
-        fi
-    done
-
-    # Create and setup virtual environment if not present
-    if [ ! -d "$VENV_DIR" ]; then
-        cd $COMFYUI_DIR
-        # Create venv with access to system packages (torch cu128, numpy, etc. pre-installed in image)
-        python3.12 -m venv --system-site-packages $VENV_DIR
-        source $VENV_DIR/bin/activate
-
-        # Ensure pip is available in the venv (needed for ComfyUI-Manager)
-        python -m ensurepip --upgrade
-        python -m pip install --upgrade pip
-
-        echo "Base packages (torch cu128, numpy, etc.) available from system site-packages"
-        echo "Installing custom node dependencies..."
-
-        # Install dependencies for all custom nodes
-        cd "$COMFYUI_DIR/custom_nodes"
-        for node_dir in */; do
-            if [ -d "$node_dir" ]; then
-                echo "Checking dependencies for $node_dir..."
-                cd "$COMFYUI_DIR/custom_nodes/$node_dir"
-
-                # Check for requirements.txt
-                if [ -f "requirements.txt" ]; then
-                    echo "Installing requirements.txt for $node_dir"
-                    pip install --no-cache-dir -r requirements.txt
-                fi
-
-                # Check for install.py
-                if [ -f "install.py" ]; then
-                    echo "Running install.py for $node_dir"
-                    python install.py
-                fi
-
-                # Check for setup.py
-                if [ -f "setup.py" ]; then
-                    echo "Running setup.py for $node_dir"
-                    pip install --no-cache-dir -e .
-                fi
-            fi
-        done
-    fi
-else
-    # Just activate the existing venv
-    source $VENV_DIR/bin/activate
-
-    echo "Checking for custom node dependencies..."
-
-    # Install dependencies for all custom nodes
-    cd "$COMFYUI_DIR/custom_nodes"
-    for node_dir in */; do
-        if [ -d "$node_dir" ]; then
-            echo "Checking dependencies for $node_dir..."
-            cd "$COMFYUI_DIR/custom_nodes/$node_dir"
-
-            # Check for requirements.txt
-            if [ -f "requirements.txt" ]; then
-                echo "Installing requirements.txt for $node_dir"
-                uv pip install --no-cache -r requirements.txt
-            fi
-
-            # Check for install.py
-            if [ -f "install.py" ]; then
-                echo "Running install.py for $node_dir"
-                python install.py
-            fi
-
-            # Check for setup.py
-            if [ -f "setup.py" ]; then
-                echo "Running setup.py for $node_dir"
-                uv pip install --no-cache -e .
-            fi
-        fi
-    done
-fi
-
-# Start ComfyUI with custom arguments if provided
-cd $COMFYUI_DIR
-FIXED_ARGS="--listen 0.0.0.0 --port 8188"
-if [ -s "$ARGS_FILE" ]; then
-    # File exists and is not empty, combine fixed args with custom args
-    CUSTOM_ARGS=$(grep -v '^#' "$ARGS_FILE" | tr '\n' ' ')
-    if [ ! -z "$CUSTOM_ARGS" ]; then
-        echo "Starting ComfyUI with additional arguments: $CUSTOM_ARGS"
-        nohup python main.py "$FIXED_ARGS" "$CUSTOM_ARGS" &>/workspace/runpod-slim/comfyui.log &
-    else
-        echo "Starting ComfyUI with default arguments"
-        nohup python main.py "$FIXED_ARGS" &>/workspace/runpod-slim/comfyui.log &
-    fi
-else
-    # File is empty, use only fixed args
-    echo "Starting ComfyUI with default arguments"
-    nohup python main.py "$FIXED_ARGS" &>/workspace/runpod-slim/comfyui.log &
-fi
-
-# Tail the log file
-tail -f /workspace/runpod-slim/comfyui.log
+ARGS=$(grep -v '^#' "$ARGS_FILE" | grep -v '^$' | tr '\n' ' ')
+echo "Starting ComfyUI with arguments: $ARGS"
+python3 main.py $ARGS 2>&1 | tee /workspace/comfyui.log

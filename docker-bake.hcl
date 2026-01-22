@@ -1,5 +1,5 @@
 variable "REGISTRY" {
-  default = "runpod"
+  default = "andyhite"
 }
 
 variable "IMAGE_TAG" {

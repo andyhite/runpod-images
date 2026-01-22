@@ -4,13 +4,43 @@ export
 
 # Configuration
 SERVICE := comfyui-5090
-REGISTRY := runpod
+REGISTRY := andyhite
 IMAGE_NAME := comfyui-5090
 IMAGE_TAG := latest
+DSTACK_PID_FILE := .dstack.pid
 
 # Derived
 SERVICE_DIR := services/$(SERVICE)
 FULL_IMAGE := $(REGISTRY)/$(IMAGE_NAME):$(IMAGE_TAG)
+
+# ============ Server Commands ============
+.PHONY: server-start server-stop server-status
+
+server-start:                   ## Start dstack server (background)
+	@if [ -f $(DSTACK_PID_FILE) ] && kill -0 $$(cat $(DSTACK_PID_FILE)) 2>/dev/null; then \
+		echo "dstack server already running (PID $$(cat $(DSTACK_PID_FILE)))"; \
+	else \
+		echo "Starting dstack server..."; \
+		dstack server --token $(DSTACK_TOKEN) > .dstack.log 2>&1 & \
+		echo $$! > $(DSTACK_PID_FILE); \
+		sleep 2; \
+		echo "dstack server started (PID $$(cat $(DSTACK_PID_FILE)))"; \
+	fi
+
+server-stop:                    ## Stop dstack server
+	@if [ -f $(DSTACK_PID_FILE) ]; then \
+		kill $$(cat $(DSTACK_PID_FILE)) 2>/dev/null && echo "dstack server stopped" || echo "Server not running"; \
+		rm -f $(DSTACK_PID_FILE); \
+	else \
+		echo "No PID file found"; \
+	fi
+
+server-status:                  ## Check dstack server status
+	@if [ -f $(DSTACK_PID_FILE) ] && kill -0 $$(cat $(DSTACK_PID_FILE)) 2>/dev/null; then \
+		echo "dstack server running (PID $$(cat $(DSTACK_PID_FILE)))"; \
+	else \
+		echo "dstack server not running"; \
+	fi
 
 # ============ Build Commands ============
 .PHONY: build push
