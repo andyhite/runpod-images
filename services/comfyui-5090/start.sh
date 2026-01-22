@@ -57,7 +57,7 @@ export_env_vars() {
     mkdir -p /root/.ssh
     true >"$SSH_ENV_DIR"
 
-    printenv | grep -E '^RUNPOD_|^PATH=|^_=|^CUDA|^LD_LIBRARY_PATH|^PYTHONPATH' | while read -r line; do
+    printenv | grep -E '^RUNPOD_|^PATH=|^_=|^CUDA|^LD_LIBRARY_PATH|^PYTHONPATH|^TORCH|^TORCHINDUCTOR|^NVIDIA_TF32|^CUDNN' | while read -r line; do
         name=$(echo "$line" | cut -d= -f1)
         value=$(echo "$line" | cut -d= -f2-)
         echo "$name=\"$value\"" >>"$ENV_FILE"
@@ -118,6 +118,9 @@ setup_workspace() {
     mkdir -p "$WORKSPACE_DIR/input"
     mkdir -p "$WORKSPACE_DIR/user/default"
     mkdir -p "$WORKSPACE_DIR/custom_nodes"
+
+    # Create torch.compile cache directory for persistent compilation artifacts
+    mkdir -p "$WORKSPACE_DIR/.torch_compile_cache"
 }
 
 # Symlink ComfyUI directories to workspace for persistence
@@ -167,28 +170,61 @@ setup_symlinks() {
 update_comfyui() {
     echo "Updating ComfyUI..."
     cd "$COMFYUI_DIR"
-    git pull || echo "Warning: git pull failed, continuing with existing version"
 
-    # Update built-in custom nodes
-    for node_dir in "$COMFYUI_DIR/custom_nodes"/*/; do
+    # Fetch and reset to handle diverged branches gracefully
+    if git fetch --all 2>/dev/null; then
+        # Try to fast-forward, fall back to reset if needed
+        if ! git pull --ff-only 2>/dev/null; then
+            echo "Warning: Fast-forward failed, attempting reset to origin..."
+            git reset --hard origin/master 2>/dev/null || \
+            git reset --hard origin/main 2>/dev/null || \
+            echo "Warning: Could not update ComfyUI, continuing with existing version"
+        fi
+    else
+        echo "Warning: git fetch failed, continuing with existing version"
+    fi
+
+    # Update custom nodes in workspace
+    for node_dir in "$WORKSPACE_DIR/custom_nodes"/*/; do
         if [ -d "$node_dir/.git" ]; then
             node_name=$(basename "$node_dir")
             echo "Updating custom node: $node_name"
             cd "$node_dir"
-            git pull || echo "Warning: Failed to update $node_name"
+            if git fetch --all 2>/dev/null; then
+                git pull --ff-only 2>/dev/null || \
+                git reset --hard origin/HEAD 2>/dev/null || \
+                echo "Warning: Failed to update $node_name"
+            fi
         fi
     done
 
     cd "$COMFYUI_DIR"
 }
 
+# Graceful shutdown handler
+cleanup() {
+    echo "Received shutdown signal, cleaning up..."
+    pkill -f "jupyter" 2>/dev/null || true
+    pkill -f "filebrowser" 2>/dev/null || true
+    pkill -f "python3 main.py" 2>/dev/null || true
+    echo "Shutdown complete"
+    exit 0
+}
+
 # ---------------------------------------------------------------------------- #
 #                               Main Program                                   #
 # ---------------------------------------------------------------------------- #
 
+# Set up signal handlers for graceful shutdown
+trap cleanup SIGTERM SIGINT SIGHUP
+
 # Setup environment
 setup_ssh
 export_env_vars
+
+# Setup workspace and symlinks BEFORE starting services
+setup_workspace
+setup_symlinks
 
 # Initialize FileBrowser if not already done
 if [ ! -f "$DB_FILE" ]; then
@@ -198,7 +234,12 @@ if [ ! -f "$DB_FILE" ]; then
     filebrowser -d "$DB_FILE" config set --port 8080
     filebrowser -d "$DB_FILE" config set --root /workspace
     filebrowser -d "$DB_FILE" config set --auth.method=json
-    filebrowser -d "$DB_FILE" users add admin adminadmin12 --perm.admin
+    # Generate secure random password or use provided one
+    FB_PASSWORD="${FILEBROWSER_PASSWORD:-$(openssl rand -base64 12)}"
+    filebrowser -d "$DB_FILE" users add admin "$FB_PASSWORD" --perm.admin
+    echo "$FB_PASSWORD" > /workspace/.filebrowser_password
+    chmod 600 /workspace/.filebrowser_password
+    echo "FileBrowser admin password saved to /workspace/.filebrowser_password"
 else
     echo "Using existing FileBrowser configuration..."
 fi
@@ -209,9 +250,7 @@ nohup filebrowser -d "$DB_FILE" &>/workspace/filebrowser.log &
 
 start_jupyter
 
-# Setup workspace, symlinks, and update ComfyUI
-setup_workspace
-setup_symlinks
+# Update ComfyUI (workspace and symlinks already set up above)
 update_comfyui
 
 # Create default comfyui_args.txt if it doesn't exist
@@ -223,13 +262,36 @@ if [ ! -f "$ARGS_FILE" ]; then
 # Changes take effect on next container restart
 
 # Network settings
+
+# Listen on all interfaces (required for container access)
 --listen 0.0.0.0
+
+# Default ComfyUI port
 --port 8188
 
-# Performance optimizations for RTX 5090
+# Performance optimizations for RTX 5090 (Blackwell)
+
+# SageAttention: Optimized attention kernels for Blackwell architecture
+# Provides significant speedups over default attention implementation
 --use-sage-attention
+
+# High VRAM mode: Keeps models in VRAM instead of offloading to RAM
+# RTX 5090 has 32GB VRAM - use it all for faster inference
 --highvram
+
+# Fast mode: Enables additional optimizations (fp16 accumulation, etc.)
+# Safe on modern GPUs with good fp16 support
 --fast
+
+# CUDA native memory allocator (faster than PyTorch's)
+--cuda-malloc
+
+# FP8 quantization for Blackwell - major VRAM savings for video models
+# Uses E4M3 format optimized for inference
+--fp8_e4m3fn-unet
+
+# Faster preview generation during workflows
+--preview-method latent2rgb
 EOF
     echo "Created ComfyUI arguments file at $ARGS_FILE"
 fi
@@ -237,6 +299,7 @@ fi
 # Start ComfyUI with arguments from file
 cd "$COMFYUI_DIR"
 
-ARGS=$(grep -v '^#' "$ARGS_FILE" | grep -v '^$' | tr '\n' ' ')
-echo "Starting ComfyUI with arguments: $ARGS"
-python3 main.py $ARGS 2>&1 | tee /workspace/comfyui.log
+# Parse arguments safely into an array to prevent word splitting issues
+mapfile -t ARGS_ARRAY < <(grep -v '^#' "$ARGS_FILE" | grep -v '^$')
+echo "Starting ComfyUI with arguments: ${ARGS_ARRAY[*]}"
+python3 main.py "${ARGS_ARRAY[@]}" 2>&1 | tee /workspace/comfyui.log

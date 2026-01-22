@@ -72,6 +72,11 @@ RUN --mount=type=cache,target=/root/.cache/pip \
     python3.13 -m pip install --no-build-isolation . && \
     rm -rf /tmp/SageAttention
 
+# Install FlashAttention-3 (Blackwell-optimized attention for video generation)
+# Provides alternative high-performance attention that some video models prefer
+RUN --mount=type=cache,target=/root/.cache/pip \
+    python3.13 -m pip install flash-attn --no-build-isolation
+
 # ============================================================================
 # Stage 2: Builder - ComfyUI core (changes more frequently)
 # ============================================================================
@@ -110,7 +115,21 @@ ENV IMAGEIO_FFMPEG_EXE=/usr/bin/ffmpeg
 
 # CUDA optimizations for better memory allocation and large model support
 ENV CUDA_MALLOC_ASYNC=1
-ENV PYTORCH_CUDA_ALLOC_CONF=max_split_size_mb:512
+# expandable_segments reduces fragmentation for large video tensors
+# garbage_collection_threshold triggers cleanup at 80% VRAM usage
+ENV PYTORCH_CUDA_ALLOC_CONF=expandable_segments:True,garbage_collection_threshold:0.8
+
+# Enable TF32 for faster matmul on Blackwell tensor cores
+ENV TORCH_ALLOW_TF32_CUBLAS_OVERRIDE=1
+ENV NVIDIA_TF32_OVERRIDE=1
+
+# cuDNN optimizations
+ENV CUDNN_V8_API_ENABLED=1
+ENV TORCH_CUDNN_V8_API_ENABLED=1
+
+# torch.compile cache for persistent compilation artifacts
+ENV TORCHINDUCTOR_CACHE_DIR=/workspace/.torch_compile_cache
+ENV TORCH_COMPILE_DEBUG=0
 
 # Update and install runtime dependencies, CUDA 13.0, and common tools
 RUN --mount=type=cache,target=/var/cache/apt,sharing=locked \
@@ -153,9 +172,11 @@ RUN --mount=type=cache,target=/var/cache/apt,sharing=locked \
     && apt-get install -y --no-install-recommends ffmpeg \
     && rm cuda-keyring_1.1-1_all.deb
 
-# Copy Python packages and pip executables from builder stage
-COPY --from=builder /usr/local/lib/python3.13 /usr/local/lib/python3.13
-COPY --from=builder /usr/local/bin /usr/local/bin
+# Copy Python packages from builder stage (only dist-packages to reduce size)
+COPY --from=builder /usr/local/lib/python3.13/dist-packages /usr/local/lib/python3.13/dist-packages
+# Copy pip and other Python executables
+COPY --from=builder /usr/local/bin/pip* /usr/local/bin/
+COPY --from=builder /usr/local/bin/wheel /usr/local/bin/
 
 # Copy ComfyUI with built-in custom nodes from builder stage
 COPY --from=builder /tmp/build/ComfyUI /app/ComfyUI
