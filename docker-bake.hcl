@@ -58,13 +58,34 @@ variable "TAG" {
 
 # Build groups
 group "default" {
-  targets = ["comfyui"]
+  targets = ["comfyui", "ai-toolkit"]
 }
 
-# Build target
+# Shared base image target
+target "base" {
+  context    = "."
+  dockerfile = "images/base/Dockerfile"
+  platforms  = ["linux/amd64"]
+  tags = [
+    "andyhite/runpod-base:${TAG}",
+    "andyhite/runpod-base:latest"
+  ]
+  args = {
+    CUDA_VERSION_DASH   = CUDA_VERSION_DASH
+    FILEBROWSER_SHA256  = FILEBROWSER_SHA256
+    FILEBROWSER_VERSION = FILEBROWSER_VERSION
+    TORCHAUDIO_VERSION  = TORCHAUDIO_VERSION
+    TORCHVISION_VERSION = TORCHVISION_VERSION
+    TORCH_INDEX_SUFFIX  = TORCH_INDEX_SUFFIX
+    TORCH_VERSION       = TORCH_VERSION
+  }
+}
+
+# ComfyUI service image
 target "comfyui" {
   context    = "."
-  dockerfile = "./services/comfyui/Dockerfile"
+  contexts   = { base = "target:base" }
+  dockerfile = "services/comfyui/Dockerfile"
   platforms  = ["linux/amd64"]
   tags = [
     "andyhite/runpod-comfyui:${TAG}",
@@ -73,15 +94,27 @@ target "comfyui" {
   args = {
     CIVICOMFY_SHA       = CIVICOMFY_SHA
     COMFYUI_VERSION     = COMFYUI_VERSION
-    CUDA_VERSION_DASH   = CUDA_VERSION_DASH
-    FILEBROWSER_SHA256  = FILEBROWSER_SHA256
-    FILEBROWSER_VERSION = FILEBROWSER_VERSION
     KJNODES_SHA         = KJNODES_SHA
     MANAGER_SHA         = MANAGER_SHA
     RUNPODDIRECT_SHA    = RUNPODDIRECT_SHA
     TORCHAUDIO_VERSION  = TORCHAUDIO_VERSION
     TORCHVISION_VERSION = TORCHVISION_VERSION
-    TORCH_INDEX_SUFFIX  = TORCH_INDEX_SUFFIX
     TORCH_VERSION       = TORCH_VERSION
+  }
+}
+
+# AI Toolkit service image
+target "ai-toolkit" {
+  context    = "."
+  contexts   = { base = "target:base" }
+  dockerfile = "services/ai-toolkit/Dockerfile"
+  platforms  = ["linux/amd64"]
+  tags = [
+    "andyhite/runpod-ai-toolkit:${TAG}",
+    "andyhite/runpod-ai-toolkit:latest"
+  ]
+  args = {
+    CACHEBUST  = ""
+    GIT_COMMIT = "main"
   }
 }
