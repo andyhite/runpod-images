@@ -1,115 +1,98 @@
 # syntax=docker/dockerfile:1.4
 # ============================================================================
-# Stage 1: Base - Python, CUDA, PyTorch, SageAttention (slow, rarely changes)
+# ComfyUI for RTX 5090 (Blackwell) on RunPod
+# Uses RunPod base image with CUDA 12.8.1 (current driver support)
+# Note: CUDA 13.0 not yet available on RunPod infrastructure
 # ============================================================================
-# Build separately with: docker build --target base -t comfyui-base:latest .
-# Then use as cache: docker build --build-arg BASE_IMAGE=comfyui-base:latest .
+
 # ============================================================================
-FROM ubuntu:22.04 AS base
+# Stage 1: Builder - Install PyTorch, SageAttention, and ComfyUI
+# ============================================================================
+FROM runpod/base:1.0.3-cuda1281-ubuntu2404 AS builder
 
-ENV DEBIAN_FRONTEND=noninteractive
-
-# Install minimal dependencies needed for building
-RUN --mount=type=cache,target=/var/cache/apt,sharing=locked \
-    --mount=type=cache,target=/var/lib/apt,sharing=locked \
-    apt-get update && \
-    apt-get install -y --no-install-recommends \
-    software-properties-common \
-    gpg-agent \
-    git \
-    wget \
-    curl \
-    ca-certificates \
-    && add-apt-repository ppa:deadsnakes/ppa && \
-    apt-get update && \
-    apt-get install -y --no-install-recommends \
-    python3.13 \
-    python3.13-venv \
-    python3.13-dev \
-    build-essential \
-    && wget https://developer.download.nvidia.com/compute/cuda/repos/ubuntu2204/x86_64/cuda-keyring_1.1-1_all.deb \
-    && dpkg -i cuda-keyring_1.1-1_all.deb \
-    && apt-get update \
-    && apt-get install -y --no-install-recommends \
-    cuda-minimal-build-12-8 \
-    libcublas-dev-12-8 \
-    libcusolver-dev-12-8 \
-    libcusparse-dev-12-8 \
-    ninja-build \
-    && rm cuda-keyring_1.1-1_all.deb
-
-# Install pip for Python 3.13 and upgrade it
-RUN --mount=type=cache,target=/root/.cache/pip \
-    curl -sS https://bootstrap.pypa.io/get-pip.py -o get-pip.py && \
-    python3.13 get-pip.py && \
-    python3.13 -m pip install --upgrade pip && \
-    rm get-pip.py
-
-# Set CUDA environment for building
+# CUDA environment for building extensions
 ENV PATH=/usr/local/cuda/bin:${PATH}
 ENV LD_LIBRARY_PATH=/usr/local/cuda/lib64
 ENV LIBRARY_PATH=/usr/local/cuda/lib64/stubs:${LIBRARY_PATH}
 
-# Install PyTorch (CUDA 12.8 build)
+# Install PyTorch nightly (CUDA 12.8 build - matches RunPod driver support)
+# After install, create constraints file to PREVENT any subsequent pip install from changing these
+# This is critical for ABI compatibility with SageAttention and other compiled extensions
 RUN --mount=type=cache,target=/root/.cache/pip \
-    python3.13 -m pip install \
-    torch torchvision torchaudio --index-url https://download.pytorch.org/whl/cu128
+    python3 -m pip install --pre \
+    torch torchvision torchaudio --index-url https://download.pytorch.org/whl/nightly/cu128 && \
+    echo "# Torch version constraints - DO NOT MODIFY" > /etc/torch-constraints.txt && \
+    pip freeze | grep -E '^torch==' >> /etc/torch-constraints.txt && \
+    pip freeze | grep -E '^torchvision==' >> /etc/torch-constraints.txt && \
+    pip freeze | grep -E '^torchaudio==' >> /etc/torch-constraints.txt && \
+    echo "Created torch constraints:" && cat /etc/torch-constraints.txt
+
+# Set constraint file for all subsequent pip installs
+# This absolutely prevents torch/torchvision/torchaudio from being changed
+ENV PIP_CONSTRAINT=/etc/torch-constraints.txt
 
 # Install Triton and SageAttention for accelerated attention (Blackwell/RTX 5090 optimized)
 # SageAttention 2.x and 3 (Blackwell) must be built from source
-# --no-build-isolation required so build can access installed torch
-# TORCH_CUDA_ARCH_LIST set for Blackwell (12.0) since no GPU available during build
+# PyPI only has up to 1.0.6; 2.2.0+ is only available via git
+# TORCH_CUDA_ARCH_LIST set for Blackwell (sm_120) since no GPU available during build
 # MAX_JOBS limits parallel compilation to avoid OOM in Docker
 ENV TORCH_CUDA_ARCH_LIST="12.0"
 ENV MAX_JOBS=1
 RUN --mount=type=cache,target=/root/.cache/pip \
-    python3.13 -m pip install triton wheel ninja packaging setuptools && \
-    git clone https://github.com/thu-ml/SageAttention.git /tmp/SageAttention && \
+    python3 -m pip install triton wheel ninja packaging setuptools && \
+    git clone --depth 1 https://github.com/thu-ml/SageAttention.git /tmp/SageAttention && \
     cd /tmp/SageAttention && \
-    python3.13 -m pip install --no-build-isolation . && \
+    python3 -m pip install --no-build-isolation . && \
     cd /tmp/SageAttention/sageattention3_blackwell && \
     sed -i 's/cc_major, cc_minor = torch.cuda.get_device_capability()/cc_major, cc_minor = 12, 0  # Blackwell RTX 5090/' setup.py && \
-    python3.13 -m pip install --no-build-isolation . && \
+    python3 -m pip install --no-build-isolation . && \
     rm -rf /tmp/SageAttention
 
-# ============================================================================
-# Stage 2: Builder - ComfyUI core (changes more frequently)
-# ============================================================================
-FROM base AS builder
-
-# Clone ComfyUI (shallow clone for smaller image, still allows updates)
+# Clone ComfyUI
 WORKDIR /tmp/build
 RUN git clone --depth 1 https://github.com/comfyanonymous/ComfyUI.git
 
 # Install ComfyUI requirements
+# CRITICAL: Filter out torch/torchvision/torchaudio to preserve nightly builds
 WORKDIR /tmp/build/ComfyUI
 RUN --mount=type=cache,target=/root/.cache/pip \
-    python3.13 -m pip install -r requirements.txt && \
-    python3.13 -m pip install GitPython opencv-python
+    grep -v -E '^torch(vision|audio)?([^a-zA-Z]|$)' requirements.txt > /tmp/requirements_filtered.txt && \
+    python3 -m pip install -r /tmp/requirements_filtered.txt && \
+    python3 -m pip install GitPython opencv-python onnx soundfile scipy && \
+    python3 -m pip uninstall -y pynvml 2>/dev/null || true && \
+    python3 -m pip install nvidia-ml-py && \
+    rm /tmp/requirements_filtered.txt
 
 # Install ComfyUI-Manager for runtime custom node management
 WORKDIR /tmp/build/ComfyUI/custom_nodes
 RUN git clone --depth 1 https://github.com/ltdrdata/ComfyUI-Manager.git && \
     if [ -f "ComfyUI-Manager/requirements.txt" ]; then \
-    python3.13 -m pip install -r ComfyUI-Manager/requirements.txt; \
+    grep -v -E '^torch(vision|audio)?([^a-zA-Z]|$)' ComfyUI-Manager/requirements.txt > /tmp/manager_reqs.txt && \
+    python3 -m pip install -r /tmp/manager_reqs.txt && \
+    rm /tmp/manager_reqs.txt; \
     fi
 
-# Clean up builder stage to reduce size when copying (keep .git for updates)
+# Verify torch versions match constraints and clean up deprecated packages
+RUN echo "Verifying torch versions match constraints..." && \
+    pip freeze | grep -E '^torch(vision|audio)?==' && \
+    echo "Constraints file:" && cat /etc/torch-constraints.txt && \
+    python3 -c "import torch; import torchaudio; print(f'torch: {torch.__version__}, torchaudio: {torchaudio.__version__}')" && \
+    pip uninstall -y pynvml 2>/dev/null || true
+
+# Clean up builder stage
 RUN find /tmp/build -name "__pycache__" -type d -exec rm -rf {} + 2>/dev/null || true && \
-    find /tmp/build -name "*.pyc" -delete 2>/dev/null || true && \
-    find /tmp/build -name "*.pyo" -delete 2>/dev/null || true
+    find /tmp/build -name "*.pyc" -delete 2>/dev/null || true
 
 # ============================================================================
-# Stage 3: Runtime - Clean image with pre-installed packages
+# Stage 2: Runtime - Clean image based on RunPod base
 # ============================================================================
-FROM ubuntu:22.04
+FROM runpod/base:1.0.3-cuda1281-ubuntu2404
 
-ENV DEBIAN_FRONTEND=noninteractive
 ENV PYTHONUNBUFFERED=1
 ENV IMAGEIO_FFMPEG_EXE=/usr/bin/ffmpeg
+ENV COMFYUI_DIR=/app/ComfyUI
 
 # CUDA optimizations for better memory allocation and large model support
-ENV CUDA_MALLOC_ASYNC=1
 # expandable_segments reduces fragmentation for large video tensors
 # garbage_collection_threshold triggers cleanup at 70% for Wan 14B headroom
 ENV PYTORCH_ALLOC_CONF=expandable_segments:True,garbage_collection_threshold:0.7
@@ -126,94 +109,33 @@ ENV TORCH_CUDNN_V8_API_ENABLED=1
 ENV TORCHINDUCTOR_CACHE_DIR=/workspace/.torch_compile_cache
 ENV TORCH_COMPILE_DEBUG=0
 
-# Update and install runtime dependencies, CUDA 12.8, and common tools
-RUN --mount=type=cache,target=/var/cache/apt,sharing=locked \
-    --mount=type=cache,target=/var/lib/apt,sharing=locked \
-    apt-get update && \
-    apt-get upgrade -y && \
-    apt-get install -y --no-install-recommends \
-    software-properties-common \
-    gpg-agent \
-    && add-apt-repository ppa:deadsnakes/ppa && \
-    add-apt-repository ppa:cybermax-dexter/ffmpeg-nvenc && \
-    apt-get update && \
-    apt-get install -y --no-install-recommends \
-    git \
-    python3.13 \
-    python3.13-venv \
-    python3.13-dev \
-    build-essential \
-    wget \
-    gnupg \
-    xz-utils \
-    openssh-client \
-    openssh-server \
-    nano \
-    curl \
-    htop \
-    tmux \
-    ca-certificates \
-    less \
-    net-tools \
-    iputils-ping \
-    procps \
-    rsync \
-    golang \
-    make \
-    && wget https://developer.download.nvidia.com/compute/cuda/repos/ubuntu2204/x86_64/cuda-keyring_1.1-1_all.deb \
-    && dpkg -i cuda-keyring_1.1-1_all.deb \
-    && apt-get update \
-    && apt-get install -y --no-install-recommends cuda-minimal-build-12-8 \
-    && apt-get install -y --no-install-recommends ffmpeg \
-    && rm cuda-keyring_1.1-1_all.deb
+# ComfyUI-Manager security level (weak allows pip installs from manager)
+ENV CM_SECURITY_LEVEL=weak
 
-# Copy Python packages from builder stage (only dist-packages to reduce size)
-COPY --from=builder /usr/local/lib/python3.13/dist-packages /usr/local/lib/python3.13/dist-packages
-# Copy pip and other Python executables
-COPY --from=builder /usr/local/bin/pip* /usr/local/bin/
-COPY --from=builder /usr/local/bin/wheel /usr/local/bin/
+# Copy Python packages from builder stage
+COPY --from=builder /usr/local/lib/python3.12/dist-packages /usr/local/lib/python3.12/dist-packages
+
+# Copy torch constraints file and set env var to prevent version changes at runtime
+COPY --from=builder /etc/torch-constraints.txt /etc/torch-constraints.txt
+ENV PIP_CONSTRAINT=/etc/torch-constraints.txt
 
 # Copy ComfyUI with built-in custom nodes from builder stage
 COPY --from=builder /tmp/build/ComfyUI /app/ComfyUI
 
-# Remove uv to force ComfyUI-Manager to use pip (uv doesn't respect --system-site-packages properly)
+# Remove uv to force ComfyUI-Manager to use pip
 RUN pip uninstall -y uv 2>/dev/null || true && \
     rm -f /usr/local/bin/uv /usr/local/bin/uvx
 
-# Install FileBrowser
-RUN curl -fsSL https://raw.githubusercontent.com/filebrowser/get/master/get.sh | bash
-
-# Set CUDA environment variables
-ENV PATH=/usr/local/cuda/bin:${PATH}
-ENV LD_LIBRARY_PATH=/usr/local/cuda/lib64
-
-# Install Jupyter with Python kernel
-RUN --mount=type=cache,target=/root/.cache/pip \
-    pip install jupyter
-
-# Final cleanup to reduce image size
-RUN rm -rf /tmp/* && \
-    find /usr/local/lib/python3.13 -name "__pycache__" -type d -exec rm -rf {} + 2>/dev/null || true && \
-    find /usr/local/lib/python3.13 -name "*.pyc" -delete 2>/dev/null || true
-
-# Configure SSH for root login
-RUN sed -i 's/#PermitRootLogin prohibit-password/PermitRootLogin yes/' /etc/ssh/sshd_config && \
-    sed -i 's/#PasswordAuthentication yes/PasswordAuthentication yes/' /etc/ssh/sshd_config && \
-    mkdir -p /run/sshd
-
 # Create workspace directories for persistent data
 RUN mkdir -p /workspace/models /workspace/output /workspace/input /workspace/user /workspace/custom_nodes
+
 WORKDIR /app/ComfyUI
 
-# Expose ports
+# Expose ports: ComfyUI, SSH, Jupyter, FileBrowser
 EXPOSE 8188 22 8888 8080
 
 # Copy and set up start script
 COPY start.sh /start.sh
 RUN chmod +x /start.sh
-
-# Set Python 3.13 as default
-RUN update-alternatives --install /usr/bin/python3 python3 /usr/bin/python3.13 1 && \
-    update-alternatives --set python3 /usr/bin/python3.13
 
 ENTRYPOINT ["/start.sh"]

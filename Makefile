@@ -43,13 +43,16 @@ server-status:                  ## Check dstack server status
 	fi
 
 # ============ Build Commands ============
-.PHONY: build push
+.PHONY: build push push-fresh
 
 build:                          ## Build Docker image using bake
 	docker buildx bake
 
 push:                           ## Build and push to RunPod registry
 	docker buildx bake --push
+
+push-fresh:                     ## Build and push with cache-busting timestamp tag
+	BUILD_ID=$$(date +%Y%m%d%H%M%S) docker buildx bake --push
 
 # ============ Volume Commands ============
 .PHONY: volume-init volume-status

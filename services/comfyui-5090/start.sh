@@ -15,7 +15,7 @@ export DB_FILE="/workspace/filebrowser.db"
 
 # Setup SSH with optional key or random password
 setup_ssh() {
-    mkdir -p ~/.ssh
+    mkdir -p ~/.ssh /run/sshd
 
     # Generate host keys if they don't exist
     for type in rsa dsa ecdsa ed25519; do
@@ -173,7 +173,7 @@ setup_symlinks() {
     fi
 }
 
-# Update ComfyUI
+# Update ComfyUI core and install its requirements
 update_comfyui() {
     echo "Updating ComfyUI..."
     cd "$COMFYUI_DIR"
@@ -183,29 +183,77 @@ update_comfyui() {
         # Try to fast-forward, fall back to reset if needed
         if ! git pull --ff-only 2>/dev/null; then
             echo "Warning: Fast-forward failed, attempting reset to origin..."
-            git reset --hard origin/master 2>/dev/null || \
-            git reset --hard origin/main 2>/dev/null || \
-            echo "Warning: Could not update ComfyUI, continuing with existing version"
+            git reset --hard origin/master 2>/dev/null ||
+                git reset --hard origin/main 2>/dev/null ||
+                echo "Warning: Could not update ComfyUI, continuing with existing version"
         fi
     else
         echo "Warning: git fetch failed, continuing with existing version"
     fi
 
-    # Update custom nodes in workspace
+    # Install/update requirements (in case update added new dependencies)
+    # PIP_CONSTRAINT env var is set to /etc/torch-constraints.txt which prevents
+    # any pip install from changing torch/torchvision/torchaudio versions (CUDA 12.8)
+    # We also filter as a belt-and-suspenders approach
+    echo "Installing ComfyUI requirements (torch versions locked via constraints)..."
+    if [ -f /etc/torch-constraints.txt ]; then
+        echo "Using torch constraints: $(cat /etc/torch-constraints.txt | tr '\n' ' ')"
+    fi
+    grep -v -E '^torch(vision|audio)?([^a-zA-Z]|$)' "$COMFYUI_DIR/requirements.txt" > /tmp/requirements_filtered.txt 2>/dev/null || true
+    pip install -q -r /tmp/requirements_filtered.txt 2>/dev/null ||
+        echo "Warning: Failed to install some ComfyUI requirements"
+    rm -f /tmp/requirements_filtered.txt
+
+    cd "$COMFYUI_DIR"
+}
+
+# Update custom nodes and install their requirements
+# Handles both git updates and dependency installation for volume persistence
+update_custom_nodes() {
+    echo "Updating custom nodes..."
+
     for node_dir in "$WORKSPACE_DIR/custom_nodes"/*/; do
-        if [ -d "$node_dir/.git" ]; then
+        if [ -d "$node_dir" ]; then
             node_name=$(basename "$node_dir")
-            echo "Updating custom node: $node_name"
-            cd "$node_dir"
-            if git fetch --all 2>/dev/null; then
-                git pull --ff-only 2>/dev/null || \
-                git reset --hard origin/HEAD 2>/dev/null || \
-                echo "Warning: Failed to update $node_name"
+
+            # Update via git if it's a git repo
+            if [ -d "$node_dir/.git" ]; then
+                echo "Updating: $node_name"
+                cd "$node_dir"
+                if git fetch --all 2>/dev/null; then
+                    git pull --ff-only 2>/dev/null ||
+                        git reset --hard origin/HEAD 2>/dev/null ||
+                        echo "Warning: Failed to update $node_name"
+                fi
+            fi
+
+            # Install requirements if they exist
+            # PIP_CONSTRAINT prevents torch version changes; filtering is extra safety
+            if [ -f "$node_dir/requirements.txt" ]; then
+                echo "Installing requirements for: $node_name (torch versions locked)"
+                grep -v -E '^torch(vision|audio)?([^a-zA-Z]|$)' "$node_dir/requirements.txt" > /tmp/node_requirements_filtered.txt 2>/dev/null || true
+                pip install -q -r /tmp/node_requirements_filtered.txt 2>/dev/null ||
+                    echo "Warning: Failed to install some requirements for $node_name"
+                rm -f /tmp/node_requirements_filtered.txt
+            fi
+
+            # Run install.py if it exists (used by Impact Pack and other nodes)
+            if [ -f "$node_dir/install.py" ]; then
+                echo "Running install.py for: $node_name"
+                cd "$node_dir"
+                python3 install.py 2>/dev/null ||
+                    echo "Warning: install.py failed for $node_name"
             fi
         fi
     done
 
     cd "$COMFYUI_DIR"
+    echo "Custom nodes update complete"
+    echo ""
+    echo "NOTE: If you see import errors for custom nodes at startup, they may be"
+    echo "incompatible with the current ComfyUI version. Use ComfyUI-Manager to"
+    echo "update or remove problematic nodes from /workspace/custom_nodes/"
+    echo ""
 }
 
 # Graceful shutdown handler
@@ -244,7 +292,7 @@ if [ ! -f "$DB_FILE" ]; then
     # Generate secure random password or use provided one
     FB_PASSWORD="${FILEBROWSER_PASSWORD:-$(openssl rand -base64 12)}"
     filebrowser -d "$DB_FILE" users add admin "$FB_PASSWORD" --perm.admin
-    echo "$FB_PASSWORD" > /workspace/.filebrowser_password
+    echo "$FB_PASSWORD" >/workspace/.filebrowser_password
     chmod 600 /workspace/.filebrowser_password
     echo "FileBrowser admin password saved to /workspace/.filebrowser_password"
 else
@@ -257,18 +305,17 @@ nohup filebrowser -d "$DB_FILE" &>/workspace/filebrowser.log &
 
 start_jupyter
 
-# Update ComfyUI (workspace and symlinks already set up above)
+# Update ComfyUI and custom nodes (workspace and symlinks already set up above)
 update_comfyui
+update_custom_nodes
 
 # Create default comfyui_args.txt if it doesn't exist
 ARGS_FILE="$WORKSPACE_DIR/comfyui_args.txt"
 if [ ! -f "$ARGS_FILE" ]; then
-    cat > "$ARGS_FILE" << 'EOF'
+    cat >"$ARGS_FILE" <<'EOF'
 # ComfyUI launch arguments (one per line)
 # Edit these to customize your ComfyUI instance
 # Changes take effect on next container restart
-
-# Network settings
 
 # Listen on all interfaces (required for container access)
 --listen 0.0.0.0
@@ -276,26 +323,8 @@ if [ ! -f "$ARGS_FILE" ]; then
 # Default ComfyUI port
 --port 8188
 
-# Performance optimizations for RTX 5090 (Blackwell)
-
-# SageAttention: Optimized attention kernels for Blackwell architecture
-# Provides significant speedups over default attention implementation
---use-sage-attention
-
-# High VRAM mode: Keeps models in VRAM instead of offloading to RAM
-# RTX 5090 has 32GB VRAM - use it all for faster inference
---highvram
-
 # Fast mode: Enables additional optimizations (fp16 accumulation, etc.)
-# Safe on modern GPUs with good fp16 support
 --fast
-
-# CUDA native memory allocator (faster than PyTorch's)
---cuda-malloc
-
-# FP8 quantization for Blackwell - major VRAM savings for video models
-# Uses E4M3 format optimized for inference
---fp8_e4m3fn-unet
 
 # Faster preview generation during workflows
 --preview-method latent2rgb
@@ -306,7 +335,8 @@ fi
 # Start ComfyUI with arguments from file
 cd "$COMFYUI_DIR"
 
-# Parse arguments from file (strip comments and blank lines, join into single line)
+# Parse arguments from file (strip comments and blank lines)
 ARGS=$(grep -v '^#' "$ARGS_FILE" | grep -v '^$' | tr '\n' ' ')
 echo "Starting ComfyUI with arguments: $ARGS"
-python3 main.py $ARGS 2>&1 | tee /workspace/comfyui.log
+# Use xargs to properly split arguments and pass to python
+echo "$ARGS" | xargs python3 main.py 2>&1 | tee /workspace/comfyui.log
