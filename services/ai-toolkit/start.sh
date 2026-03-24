@@ -1,68 +1,44 @@
 #!/bin/bash
-set -e # Exit the script if any statement returns a non-true return value
+set -e
 
-# ref https://github.com/runpod/containers/blob/main/container-template/start.sh
+# Source shared helper functions
+source /start-helpers.sh
 
-# ---------------------------------------------------------------------------- #
-#                          Function Definitions                                #
-# ---------------------------------------------------------------------------- #
-
-# Setup ssh
-setup_ssh() {
-    if [[ $PUBLIC_KEY ]]; then
-        echo "Setting up SSH..."
-        mkdir -p ~/.ssh
-        echo "$PUBLIC_KEY" >>~/.ssh/authorized_keys
-        chmod 700 -R ~/.ssh
-
-        if [ ! -f /etc/ssh/ssh_host_rsa_key ]; then
-            ssh-keygen -t rsa -f /etc/ssh/ssh_host_rsa_key -q -N ''
-            echo "RSA key fingerprint:"
-            ssh-keygen -lf /etc/ssh/ssh_host_rsa_key.pub
-        fi
-
-        if [ ! -f /etc/ssh/ssh_host_dsa_key ]; then
-            ssh-keygen -t dsa -f /etc/ssh/ssh_host_dsa_key -q -N ''
-            echo "DSA key fingerprint:"
-            ssh-keygen -lf /etc/ssh/ssh_host_dsa_key.pub
-        fi
-
-        if [ ! -f /etc/ssh/ssh_host_ecdsa_key ]; then
-            ssh-keygen -t ecdsa -f /etc/ssh/ssh_host_ecdsa_key -q -N ''
-            echo "ECDSA key fingerprint:"
-            ssh-keygen -lf /etc/ssh/ssh_host_ecdsa_key.pub
-        fi
-
-        if [ ! -f /etc/ssh/ssh_host_ed25519_key ]; then
-            ssh-keygen -t ed25519 -f /etc/ssh/ssh_host_ed25519_key -q -N ''
-            echo "ED25519 key fingerprint:"
-            ssh-keygen -lf /etc/ssh/ssh_host_ed25519_key.pub
-        fi
-
-        service ssh start
-
-        echo "SSH host keys:"
-        for key in /etc/ssh/*.pub; do
-            echo "Key: $key"
-            ssh-keygen -lf "$key"
-        done
-    fi
-}
-
-# Export env vars
-export_env_vars() {
-    echo "Exporting environment variables..."
-    printenv | grep -E '^RUNPOD_|^PATH=|^_=' | awk -F = '{ print "export " $1 "=\"" $2 "\"" }' >>/etc/rp_environment
-    echo 'source /etc/rp_environment' >>~/.bashrc
-}
+AI_TOOLKIT_DIR="/workspace/ai-toolkit"
 
 # ---------------------------------------------------------------------------- #
-#                               Main Program                                   #
+#                               Main Program                                     #
 # ---------------------------------------------------------------------------- #
 
-echo "Pod Started"
-
+# Setup environment
 setup_ssh
 export_env_vars
+init_filebrowser
+start_filebrowser
+start_jupyter
+
+# Setup AI Toolkit if needed
+if [ ! -d "$AI_TOOLKIT_DIR" ]; then
+    echo "First time setup: Copying baked AI Toolkit to workspace..."
+    cp -r /opt/ai-toolkit-baked "$AI_TOOLKIT_DIR"
+    echo "AI Toolkit copied to workspace"
+else
+    echo "Using existing AI Toolkit installation"
+fi
+
+# Start AI Toolkit UI — keep container alive if it crashes so SSH/Jupyter remain accessible
 echo "Starting AI Toolkit UI..."
-cd /app/ai-toolkit/ui && npm run start
+cd "$AI_TOOLKIT_DIR/ui"
+npm run start &
+APP_PID=$!
+trap "kill $APP_PID 2>/dev/null" SIGTERM SIGINT
+wait $APP_PID || true
+
+echo "============================================="
+echo "  AI Toolkit crashed — check the logs above."
+echo "  SSH and JupyterLab are still available."
+echo "  To restart after fixing:"
+echo "    cd $AI_TOOLKIT_DIR/ui && npm run start"
+echo "============================================="
+
+sleep infinity
