@@ -2,32 +2,43 @@
 include .env
 export
 
-# Configuration
-SERVICE := comfyui
+# Configuration — override SERVICE to target a single image (e.g., make build SERVICE=ai-toolkit)
+SERVICE :=
 REGISTRY := andyhite
-IMAGE_NAME := runpod-$(SERVICE)
 IMAGE_TAG := latest
 
-# Derived
-FULL_IMAGE := $(REGISTRY)/$(IMAGE_NAME):$(IMAGE_TAG)
-
 # ============ Build Commands ============
-.PHONY: build push push-fresh
+.PHONY: build push push-fresh build-all push-all push-fresh-all
 
-build:                          ## Build Docker image using bake
+build:                          ## Build image(s) — all by default, or set SERVICE=<name>
+ifdef SERVICE
 	docker buildx bake $(SERVICE)
+else
+	docker buildx bake
+endif
 
-push:                           ## Build and push to registry
+push:                           ## Build and push image(s) to registry
+ifdef SERVICE
 	docker buildx bake $(SERVICE) --push
+else
+	docker buildx bake --push
+endif
 
 push-fresh:                     ## Build and push with cache-busting timestamp tag
+ifdef SERVICE
 	BUILD_ID=$$(date +%Y%m%d%H%M%S) docker buildx bake $(SERVICE) --push
+else
+	BUILD_ID=$$(date +%Y%m%d%H%M%S) docker buildx bake --push
+endif
 
 # ============ Utilities ============
 .PHONY: clean help
 
-clean:                          ## Remove local Docker images
-	docker rmi $(FULL_IMAGE) || true
+clean:                          ## Remove local Docker images for a service (requires SERVICE=<name>)
+ifndef SERVICE
+	$(error SERVICE is required for clean, e.g., make clean SERVICE=comfyui)
+endif
+	docker rmi $(REGISTRY)/runpod-$(SERVICE):$(IMAGE_TAG) || true
 
 help:                           ## Show this help
 	@grep -E '^[a-zA-Z_-]+:.*?##' $(MAKEFILE_LIST) | sort | \

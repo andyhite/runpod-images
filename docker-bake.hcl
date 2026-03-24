@@ -67,7 +67,7 @@ group "default" {
 # Shared base image target
 target "base" {
   context    = "."
-  dockerfile = "images/runpod-base/Dockerfile"
+  dockerfile = "images/base/Dockerfile"
   platforms  = ["linux/amd64"]
   tags = [
     "andyhite/runpod-base:${TAG}",
