@@ -13,12 +13,12 @@ RUN curl -sL https://deb.nodesource.com/setup_23.x -o /tmp/nodesource_setup.sh &
 
 # Clone AI Toolkit repo (CACHEBUST invalidates cache to pull latest)
 ARG CACHEBUST=1234
-ARG GIT_COMMIT=main
+ARG AI_TOOLKIT_VERSION=main
 WORKDIR /tmp/build
 RUN echo "Cache bust: ${CACHEBUST}" && \
   git clone https://github.com/ostris/ai-toolkit.git && \
   cd ai-toolkit && \
-  git checkout ${GIT_COMMIT}
+  git checkout ${AI_TOOLKIT_VERSION}
 
 WORKDIR /tmp/build/ai-toolkit
 
@@ -42,7 +42,7 @@ RUN rm -rf /tmp/build
 EXPOSE 8675
 
 # Copy start script
-COPY services/ai-toolkit/start.sh /start.sh
+COPY images/ai-toolkit/start.sh /start.sh
 
 WORKDIR /workspace
 

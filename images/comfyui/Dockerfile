@@ -63,7 +63,7 @@ RUN cat ComfyUI/requirements.txt > requirements.in && \
   python3.12 -m pip install --no-cache-dir --ignore-installed --require-hashes -r requirements.lock
 
 # Pre-populate ComfyUI-Manager cache so first cold start skips the slow registry fetch
-COPY services/comfyui/scripts/prebake-manager-cache.py /tmp/prebake-manager-cache.py
+COPY images/comfyui/scripts/prebake-manager-cache.py /tmp/prebake-manager-cache.py
 RUN python3.12 /tmp/prebake-manager-cache.py /tmp/build/ComfyUI/user/__manager/cache
 
 # Bake ComfyUI + custom nodes into a known location for runtime copy
@@ -76,7 +76,7 @@ RUN rm -rf /tmp/build
 EXPOSE 8188
 
 # Copy start script
-COPY services/comfyui/start.sh /start.sh
+COPY images/comfyui/start.sh /start.sh
 
 WORKDIR /workspace
 

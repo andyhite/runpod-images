@@ -30,6 +30,9 @@ variable "TORCH_VERSION" {
 variable "COMFYUI_VERSION" {
   default = "v0.17.2"
 }
+variable "AI_TOOLKIT_VERSION" {
+  default = "main"
+}
 variable "FILEBROWSER_SHA256" {
   default = "8cd8c3baecb086028111b912f252a6e3169737fa764b5c510139e81f9da87799"
 }
@@ -64,7 +67,7 @@ group "default" {
 # Shared base image target
 target "base" {
   context    = "."
-  dockerfile = "images/base/Dockerfile"
+  dockerfile = "images/runpod-base/Dockerfile"
   platforms  = ["linux/amd64"]
   tags = [
     "andyhite/runpod-base:${TAG}",
@@ -85,7 +88,7 @@ target "base" {
 target "comfyui" {
   context    = "."
   contexts   = { base = "target:base" }
-  dockerfile = "services/comfyui/Dockerfile"
+  dockerfile = "images/comfyui/Dockerfile"
   platforms  = ["linux/amd64"]
   tags = [
     "andyhite/runpod-comfyui:${TAG}",
@@ -107,14 +110,14 @@ target "comfyui" {
 target "ai-toolkit" {
   context    = "."
   contexts   = { base = "target:base" }
-  dockerfile = "services/ai-toolkit/Dockerfile"
+  dockerfile = "images/ai-toolkit/Dockerfile"
   platforms  = ["linux/amd64"]
   tags = [
     "andyhite/runpod-ai-toolkit:${TAG}",
     "andyhite/runpod-ai-toolkit:latest"
   ]
   args = {
-    CACHEBUST  = ""
-    GIT_COMMIT = "main"
+    AI_TOOLKIT_VERSION = AI_TOOLKIT_VERSION
+    CACHEBUST          = ""
   }
 }

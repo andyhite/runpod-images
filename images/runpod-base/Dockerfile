@@ -147,7 +147,7 @@ RUN update-alternatives --install /usr/bin/python3 python3 /usr/bin/python3.12 1
   update-alternatives --set python3 /usr/bin/python3.12
 
 # Copy shared start helpers
-COPY images/base/start-helpers.sh /start-helpers.sh
+COPY images/runpod-base/start-helpers.sh /start-helpers.sh
 
 # Create workspace directory
 RUN mkdir -p /workspace
