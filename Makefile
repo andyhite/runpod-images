@@ -5,7 +5,7 @@ export
 # Configuration
 SERVICE := comfyui
 REGISTRY := andyhite
-IMAGE_NAME := comfyui
+IMAGE_NAME := runpod-$(SERVICE)
 IMAGE_TAG := latest
 DSTACK_PID_FILE := .dstack.pid
 
@@ -46,13 +46,13 @@ server-status:                  ## Check dstack server status
 .PHONY: build push push-fresh
 
 build:                          ## Build Docker image using bake
-	docker buildx bake
+	docker buildx bake $(SERVICE)
 
 push:                           ## Build and push to RunPod registry
-	docker buildx bake --push
+	docker buildx bake $(SERVICE) --push
 
 push-fresh:                     ## Build and push with cache-busting timestamp tag
-	BUILD_ID=$$(date +%Y%m%d%H%M%S) docker buildx bake --push
+	BUILD_ID=$$(date +%Y%m%d%H%M%S) docker buildx bake $(SERVICE) --push
 
 # ============ Volume Commands ============
 .PHONY: volume-init volume-status
