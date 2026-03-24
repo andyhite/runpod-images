@@ -1,5 +1,0 @@
-type: volume
-name: comfy-ui
-backend: runpod
-region: ${{ env.DSTACK_REGION }}
-size: 200GB
