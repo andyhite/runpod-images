@@ -1,9 +1,7 @@
 # ============================================================================
-# Stage 1: Builder - Download pinned sources and install all Python packages
+# ComfyUI service image — inherits CUDA, PyTorch, Jupyter, FileBrowser from base
 # ============================================================================
-FROM ubuntu:24.04 AS builder
-
-ENV DEBIAN_FRONTEND=noninteractive
+FROM base
 
 # ---- Version pins (set in docker-bake.hcl) ----
 ARG COMFYUI_VERSION
@@ -14,40 +12,6 @@ ARG RUNPODDIRECT_SHA
 ARG TORCH_VERSION
 ARG TORCHVISION_VERSION
 ARG TORCHAUDIO_VERSION
-
-# ---- CUDA variant (set in docker-bake.hcl per target) ----
-ARG CUDA_VERSION_DASH=13-0
-ARG TORCH_INDEX_SUFFIX=cu130
-
-# Install minimal dependencies needed for building
-RUN apt-get update && \
-  apt-get install -y --no-install-recommends \
-  wget \
-  curl \
-  git \
-  ca-certificates \
-  python3.12 \
-  python3.12-venv \
-  python3.12-dev \
-  build-essential \
-  && wget https://developer.download.nvidia.com/compute/cuda/repos/ubuntu2404/x86_64/cuda-keyring_1.1-1_all.deb \
-  && dpkg -i cuda-keyring_1.1-1_all.deb \
-  && apt-get update \
-  && apt-get install -y --no-install-recommends cuda-minimal-build-${CUDA_VERSION_DASH} libcusparse-dev-${CUDA_VERSION_DASH} \
-  && apt-get clean \
-  && rm -rf /var/lib/apt/lists/* \
-  && rm cuda-keyring_1.1-1_all.deb \
-  && rm -f /usr/lib/python3.12/EXTERNALLY-MANAGED
-
-# Install pip and pip-tools for lock file generation
-RUN curl -sS https://bootstrap.pypa.io/get-pip.py -o get-pip.py && \
-  python3.12 get-pip.py && \
-  python3.12 -m pip install --no-cache-dir pip-tools && \
-  rm get-pip.py
-
-# Set CUDA environment for building
-ENV PATH=/usr/local/cuda/bin:${PATH}
-ENV LD_LIBRARY_PATH=/usr/local/cuda/lib64
 
 # Download pinned source archives
 WORKDIR /tmp/build
@@ -65,7 +29,6 @@ RUN curl -fSL "https://github.com/ltdrdata/ComfyUI-Manager/archive/${MANAGER_SHA
   mkdir -p ComfyUI-RunpodDirect && tar xzf runpoddirect.tar.gz --strip-components=1 -C ComfyUI-RunpodDirect && rm runpoddirect.tar.gz
 
 # Init git repos with upstream remotes so ComfyUI-Manager can detect versions
-# and users can update via Manager at their own risk
 RUN cd /tmp/build/ComfyUI && \
   git init && git add -A && git -c user.name=- -c user.email=- commit -q -m "ComfyUI ${COMFYUI_VERSION}" && git tag "${COMFYUI_VERSION}" && \
   git remote add origin https://github.com/comfyanonymous/ComfyUI.git && \
@@ -82,11 +45,6 @@ RUN cd /tmp/build/ComfyUI && \
   git init && git add -A && git -c user.name=- -c user.email=- commit -q -m "ComfyUI-RunpodDirect ${RUNPODDIRECT_SHA}" && \
   git remote add origin https://github.com/MadiatorLabs/ComfyUI-RunpodDirect.git
 
-# Install PyTorch (pinned version)
-RUN python3.12 -m pip install --no-cache-dir \
-  torch==${TORCH_VERSION} torchvision==${TORCHVISION_VERSION} torchaudio==${TORCHAUDIO_VERSION} \
-  --index-url https://download.pytorch.org/whl/${TORCH_INDEX_SUFFIX}
-
 # Generate lock file from all requirements, then install with hash verification
 WORKDIR /tmp/build
 RUN cat ComfyUI/requirements.txt > requirements.in && \
@@ -97,9 +55,6 @@ RUN cat ComfyUI/requirements.txt > requirements.in && \
   done && \
   echo "GitPython" >> requirements.in && \
   echo "opencv-python" >> requirements.in && \
-  echo "jupyter" >> requirements.in && \
-  echo "jupyter-resource-usage" >> requirements.in && \
-  echo "jupyterlab-nvdashboard" >> requirements.in && \
   echo "torch==${TORCH_VERSION}" >> constraints.txt && \
   echo "torchvision==${TORCHVISION_VERSION}" >> constraints.txt && \
   echo "torchaudio==${TORCHAUDIO_VERSION}" >> constraints.txt && \
@@ -108,117 +63,21 @@ RUN cat ComfyUI/requirements.txt > requirements.in && \
   python3.12 -m pip install --no-cache-dir --ignore-installed --require-hashes -r requirements.lock
 
 # Pre-populate ComfyUI-Manager cache so first cold start skips the slow registry fetch
-COPY scripts/prebake-manager-cache.py /tmp/prebake-manager-cache.py
+COPY services/comfyui/scripts/prebake-manager-cache.py /tmp/prebake-manager-cache.py
 RUN python3.12 /tmp/prebake-manager-cache.py /tmp/build/ComfyUI/user/__manager/cache
 
 # Bake ComfyUI + custom nodes into a known location for runtime copy
 RUN cp -r /tmp/build/ComfyUI /opt/comfyui-baked
 
-# ============================================================================
-# Stage 2: Runtime - Clean image with pre-installed packages
-# ============================================================================
-FROM ubuntu:24.04
+# Clean up build artifacts
+RUN rm -rf /tmp/build
 
-ENV DEBIAN_FRONTEND=noninteractive
-ENV PYTHONUNBUFFERED=1
-ENV IMAGEIO_FFMPEG_EXE=/usr/bin/ffmpeg
-ENV FILEBROWSER_CONFIG=/workspace/runpod-slim/.filebrowser.json
-
-# ---- CUDA variant (re-declared for runtime stage) ----
-ARG CUDA_VERSION_DASH=12-8
-
-# ---- FileBrowser version pin (set in docker-bake.hcl) ----
-ARG FILEBROWSER_VERSION
-ARG FILEBROWSER_SHA256
-
-# Update and install runtime dependencies, CUDA, and common tools
-RUN apt-get update && \
-  apt-get upgrade -y && \
-  apt-get install -y --no-install-recommends \
-  git \
-  python3.12 \
-  python3.12-venv \
-  python3.12-dev \
-  build-essential \
-  libssl-dev \
-  wget \
-  gnupg \
-  xz-utils \
-  openssh-client \
-  openssh-server \
-  nano \
-  curl \
-  htop \
-  tmux \
-  ca-certificates \
-  less \
-  net-tools \
-  iputils-ping \
-  procps \
-  openssl \
-  ffmpeg \
-  && wget https://developer.download.nvidia.com/compute/cuda/repos/ubuntu2404/x86_64/cuda-keyring_1.1-1_all.deb \
-  && dpkg -i cuda-keyring_1.1-1_all.deb \
-  && apt-get update \
-  && apt-get install -y --no-install-recommends cuda-minimal-build-${CUDA_VERSION_DASH} \
-  && apt-get clean \
-  && rm -rf /var/lib/apt/lists/* \
-  && rm cuda-keyring_1.1-1_all.deb \
-  && rm -f /usr/lib/python3.12/EXTERNALLY-MANAGED
-
-# Copy Python packages, executables, and Jupyter data from builder stage
-COPY --from=builder /usr/local/lib/python3.12 /usr/local/lib/python3.12
-COPY --from=builder /usr/local/bin /usr/local/bin
-COPY --from=builder /usr/local/share/jupyter /usr/local/share/jupyter
-
-# Register Jupyter extensions (pip --ignore-installed skips post-install hooks)
-RUN mkdir -p /usr/local/etc/jupyter/jupyter_server_config.d && \
-  echo '{"ServerApp":{"jpserver_extensions":{"jupyter_server_terminals":true,"jupyterlab":true,"jupyter_resource_usage":true,"jupyterlab_nvdashboard":true}}}' \
-  > /usr/local/etc/jupyter/jupyter_server_config.d/extensions.json
-
-# Copy baked ComfyUI + custom nodes from builder stage
-COPY --from=builder /opt/comfyui-baked /opt/comfyui-baked
-
-# Remove uv to force ComfyUI-Manager to use pip (uv doesn't respect --system-site-packages properly)
-RUN pip uninstall -y uv 2>/dev/null || true && \
-  rm -f /usr/local/bin/uv /usr/local/bin/uvx
-
-# Install FileBrowser (pinned version with checksum)
-RUN curl -fSL "https://github.com/filebrowser/filebrowser/releases/download/${FILEBROWSER_VERSION}/linux-amd64-filebrowser.tar.gz" -o /tmp/fb.tar.gz && \
-  echo "${FILEBROWSER_SHA256}  /tmp/fb.tar.gz" | sha256sum -c - && \
-  tar xzf /tmp/fb.tar.gz -C /usr/local/bin filebrowser && \
-  rm /tmp/fb.tar.gz
-
-# Set CUDA environment variables
-ENV PATH=/usr/local/cuda/bin:${PATH}
-ENV LD_LIBRARY_PATH=/usr/local/cuda/lib64
-
-# Allow container to start on hosts with older CUDA 12.x drivers
-ENV NVIDIA_REQUIRE_CUDA=""
-ENV NVIDIA_DISABLE_REQUIRE=true
-ENV NVIDIA_VISIBLE_DEVICES=all
-ENV NVIDIA_DRIVER_CAPABILITIES=all
-
-# Jupyter is included in the lock file and installed in the builder stage
-
-# Configure SSH for root login
-RUN sed -i 's/#PermitRootLogin prohibit-password/PermitRootLogin yes/' /etc/ssh/sshd_config && \
-  sed -i 's/#PasswordAuthentication yes/PasswordAuthentication yes/' /etc/ssh/sshd_config && \
-  mkdir -p /run/sshd && \
-  rm -f /etc/ssh/ssh_host_*
-
-# Create workspace directory
-RUN mkdir -p /workspace/runpod-slim
-WORKDIR /workspace/runpod-slim
-
-# Expose ports
-EXPOSE 8188 22 8888 8080
+# Expose ComfyUI port
+EXPOSE 8188
 
 # Copy start script
-COPY start.sh /start.sh
+COPY services/comfyui/start.sh /start.sh
 
-# Set Python 3.12 as default
-RUN update-alternatives --install /usr/bin/python3 python3 /usr/bin/python3.12 1 && \
-  update-alternatives --set python3 /usr/bin/python3.12
+WORKDIR /workspace
 
 ENTRYPOINT ["/start.sh"]
