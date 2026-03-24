@@ -49,8 +49,8 @@ export_env_vars() {
         echo "export $name=\"$value\"" >>/etc/rp_environment
     done
 
-    echo 'source /etc/rp_environment' >>~/.bashrc
-    echo 'source /etc/rp_environment' >>/etc/bash.bashrc
+    grep -q '/etc/rp_environment' ~/.bashrc 2>/dev/null || echo 'source /etc/rp_environment' >>~/.bashrc
+    grep -q '/etc/rp_environment' /etc/bash.bashrc 2>/dev/null || echo 'source /etc/rp_environment' >>/etc/bash.bashrc
 
     chmod 644 "$ENV_FILE" "$PAM_ENV_FILE"
     chmod 600 "$SSH_ENV_DIR"
@@ -62,12 +62,12 @@ init_filebrowser() {
 
     if [ ! -f "$db_file" ]; then
         echo "Initializing FileBrowser..."
-        filebrowser config init
-        filebrowser config set --address 0.0.0.0
-        filebrowser config set --port 8080
-        filebrowser config set --root /workspace
-        filebrowser config set --auth.method=json
-        filebrowser users add admin adminadmin12 --perm.admin
+        filebrowser config init --database "$db_file"
+        filebrowser config set --database "$db_file" --address 0.0.0.0
+        filebrowser config set --database "$db_file" --port 8080
+        filebrowser config set --database "$db_file" --root /workspace
+        filebrowser config set --database "$db_file" --auth.method=json
+        filebrowser users add admin adminadmin12 --perm.admin --database "$db_file"
     else
         echo "Using existing FileBrowser configuration..."
     fi
@@ -76,7 +76,7 @@ init_filebrowser() {
 # Start FileBrowser in background
 start_filebrowser() {
     echo "Starting FileBrowser on port 8080..."
-    nohup filebrowser &>/filebrowser.log &
+    nohup filebrowser --database /workspace/filebrowser.db &>/filebrowser.log &
 }
 
 # Start JupyterLab server

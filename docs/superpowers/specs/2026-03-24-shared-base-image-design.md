@@ -56,12 +56,17 @@ services/
 - `FILEBROWSER_VERSION`
 - `FILEBROWSER_SHA256`
 
+### WORKDIR
+
+`/workspace` — services inherit this and do not override it.
+
 ### Environment Variables
 
 ```
 DEBIAN_FRONTEND=noninteractive
 PYTHONUNBUFFERED=1
 IMAGEIO_FFMPEG_EXE=/usr/bin/ffmpeg
+TORCH_CUDA_ARCH_LIST="8.0 8.6 8.9 9.0 10.0 12.0"
 PATH=/usr/local/cuda/bin:${PATH}
 LD_LIBRARY_PATH=/usr/local/cuda/lib64
 NVIDIA_REQUIRE_CUDA=""
@@ -116,8 +121,10 @@ Sourced by each service's `start.sh`. Provides:
 - Remove builder stage (CUDA, PyTorch, pip-tools all come from base)
 - `FROM` the base image (via bake `contexts = { base = "target:base" }`)
 - Keep all app-specific logic: download ComfyUI + custom nodes, init git repos, pip-compile app deps, prebake manager cache, bake to `/opt/comfyui-baked`
-- Remove: uv uninstall step (stays or moves to base if needed)
+- Drop uv uninstall step (uv is not installed in the base image)
+- COPY path for prebake script: `services/comfyui/scripts/prebake-manager-cache.py` (context is repo root)
 - Path: `/opt/comfyui-baked` (build) -> `/workspace/comfyui` (runtime)
+- Use `ENTRYPOINT ["/start.sh"]` (consistent across all services)
 
 ### Build Args (from docker-bake.hcl)
 
@@ -129,8 +136,8 @@ Sourced by each service's `start.sh`. Provides:
 - Source `/start-helpers.sh`
 - Call `setup_ssh`, `export_env_vars`, `init_filebrowser`, `start_filebrowser`, `start_jupyter`
 - First-run: copy `/opt/comfyui-baked` -> `/workspace/comfyui`
-- Create venv at `/workspace/comfyui/.venv-cu128` with `--system-site-packages`
-- CUDA migration logic (updated paths: `/workspace/comfyui/...`)
+- Create venv at `/workspace/comfyui/.venv-cu130` with `--system-site-packages`
+- CUDA migration logic: migrate `.venv` and `.venv-cu128` to `.venv-cu130` (updated paths: `/workspace/comfyui/...`)
 - Read `/workspace/comfyui/comfyui_args.txt` for custom args
 - Start ComfyUI on port 8188
 - Crash recovery: log message, `sleep infinity` (SSH/Jupyter stay alive)
@@ -150,6 +157,7 @@ Sourced by each service's `start.sh`. Provides:
 - Build UI: `npm install && npm run build && npm run update_db`
 - Bake to `/opt/ai-toolkit-baked`
 - Copy `start.sh`
+- Use `ENTRYPOINT ["/start.sh"]` (consistent across all services)
 
 ### Build Args
 
@@ -198,7 +206,7 @@ Existing shared variables remain (CUDA, PyTorch, FileBrowser pins). No new varia
 
 ### Groups
 
-- `default` group includes all three targets (or configurable per need)
+- `default` group includes `comfyui` and `ai-toolkit` (base is built automatically as a dependency via `contexts`)
 
 ## Makefile
 
@@ -212,7 +220,7 @@ Existing shared variables remain (CUDA, PyTorch, FileBrowser pins). No new varia
 | Old Path | New Path |
 |---|---|
 | `/workspace/runpod-slim/ComfyUI` | `/workspace/comfyui` |
-| `/workspace/runpod-slim/ComfyUI/.venv-cu128` | `/workspace/comfyui/.venv-cu128` |
+| `/workspace/runpod-slim/ComfyUI/.venv-cu128` | `/workspace/comfyui/.venv-cu130` |
 | `/workspace/runpod-slim/comfyui_args.txt` | `/workspace/comfyui/comfyui_args.txt` |
 | `/workspace/runpod-slim/.filebrowser.json` | `/workspace/.filebrowser.json` |
 | `/workspace/runpod-slim/filebrowser.db` | `/workspace/filebrowser.db` |
