@@ -3,9 +3,9 @@ include .env
 export
 
 # Configuration
-SERVICE := comfyui-5090
+SERVICE := comfyui
 REGISTRY := andyhite
-IMAGE_NAME := comfyui-5090
+IMAGE_NAME := comfyui
 IMAGE_TAG := latest
 DSTACK_PID_FILE := .dstack.pid
 
