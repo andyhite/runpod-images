@@ -12,6 +12,7 @@ ARGS_FILE="$COMFYUI_DIR/comfyui_args.txt"
 # ---------------------------------------------------------------------------- #
 
 # Configure S3 sync (must be before export_env_vars so SYNC_* vars are exported)
+SYNC_SERVICE=comfyui
 configure_sync
 
 # Setup environment

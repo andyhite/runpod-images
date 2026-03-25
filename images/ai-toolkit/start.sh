@@ -11,6 +11,7 @@ AI_TOOLKIT_DIR="/workspace/ai-toolkit"
 # ---------------------------------------------------------------------------- #
 
 # Configure S3 sync (must be before export_env_vars so SYNC_* vars are exported)
+SYNC_SERVICE=ai-toolkit
 configure_sync
 
 # Setup environment

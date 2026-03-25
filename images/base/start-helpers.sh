@@ -99,11 +99,19 @@ start_jupyter() {
 
 # ---- S3 Workspace Sync ----
 
-# Configure S3 sync if credentials are present
+# Configure S3 sync if credentials are present.
+# Callers must set SYNC_SERVICE before calling (e.g., SYNC_SERVICE=comfyui).
+# Syncs /workspace/$SYNC_SERVICE ↔ s3://$S3_BUCKET/$SYNC_SERVICE
 configure_sync() {
     if [[ -z "${S3_ACCESS_KEY_ID:-}" ]] || [[ -z "${S3_BUCKET:-}" ]]; then
         SYNC_ENABLED=false
         echo "S3 sync disabled (S3_ACCESS_KEY_ID or S3_BUCKET not set)"
+        return
+    fi
+
+    if [[ -z "${SYNC_SERVICE:-}" ]]; then
+        SYNC_ENABLED=false
+        echo "S3 sync disabled (SYNC_SERVICE not set)"
         return
     fi
 
@@ -112,9 +120,10 @@ configure_sync() {
     export RCLONE_S3_SECRET_ACCESS_KEY="${S3_SECRET_ACCESS_KEY:-}"
 
     SYNC_ENABLED=true
-    SYNC_REMOTE=":${RCLONE_REMOTE_TYPE:-s3}:${S3_BUCKET}"
+    SYNC_LOCAL="/workspace/${SYNC_SERVICE}"
+    SYNC_REMOTE=":${RCLONE_REMOTE_TYPE:-s3}:${S3_BUCKET}/${SYNC_SERVICE}"
     SYNC_INTERVAL="${SYNC_INTERVAL:-600}"
-    echo "S3 sync enabled: ${SYNC_REMOTE} (interval: ${SYNC_INTERVAL}s)"
+    echo "S3 sync enabled: ${SYNC_LOCAL} ↔ ${SYNC_REMOTE} (interval: ${SYNC_INTERVAL}s)"
 }
 
 # Download workspace from S3 (uses rclone copy — never deletes local files)
@@ -122,7 +131,7 @@ sync_download() {
     if [[ "$SYNC_ENABLED" != "true" ]]; then return; fi
 
     echo "Downloading workspace from S3..."
-    rclone copy "$SYNC_REMOTE" /workspace \
+    rclone copy "$SYNC_REMOTE" "$SYNC_LOCAL" \
         --transfers=16 \
         --checkers=32 \
         --s3-no-check-bucket \
@@ -146,7 +155,7 @@ sync_upload() {
         echo "Uploading workspace to S3..."
     fi
 
-    flock $flock_flag /tmp/sync.lock rclone sync /workspace "$SYNC_REMOTE" \
+    flock $flock_flag /tmp/sync.lock rclone sync "$SYNC_LOCAL" "$SYNC_REMOTE" \
         --transfers=16 \
         --checkers=32 \
         --s3-no-check-bucket \
