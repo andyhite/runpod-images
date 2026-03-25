@@ -11,6 +11,9 @@ ARGS_FILE="$COMFYUI_DIR/comfyui_args.txt"
 #                               Main Program                                     #
 # ---------------------------------------------------------------------------- #
 
+# Configure S3 sync (must be before export_env_vars so SYNC_* vars are exported)
+configure_sync
+
 # Setup environment
 setup_ssh
 export_env_vars
@@ -26,6 +29,9 @@ if [ ! -d "$COMFYUI_DIR" ]; then
 else
     echo "Using existing ComfyUI installation"
 fi
+
+# Download workspace from S3 (overlays on top of baked copy)
+sync_download
 
 # Install/update dependencies
 echo "Installing/updating ComfyUI dependencies..."
@@ -45,7 +51,18 @@ fi
 # Warm up pip so ComfyUI-Manager's 5s timeout check doesn't fail on cold start
 python -m pip --version >/dev/null 2>&1
 
-# Start ComfyUI — keep container alive if it crashes so SSH/Jupyter remain accessible
+# SIGTERM/SIGINT handler: final S3 upload before exit
+shutdown() {
+    set +e
+    echo "Shutting down — syncing workspace to S3..."
+    kill $APP_PID 2>/dev/null
+    kill $SYNC_PID 2>/dev/null
+    sync_upload wait
+    exit 0
+}
+trap 'shutdown' SIGTERM SIGINT
+
+# Start ComfyUI
 cd $COMFYUI_DIR
 FIXED_ARGS="--listen 0.0.0.0 --port 8188"
 if [ -s "$ARGS_FILE" ]; then
@@ -57,9 +74,13 @@ fi
 
 echo "Starting ComfyUI with args: $FIXED_ARGS"
 python main.py $FIXED_ARGS &
-COMFY_PID=$!
-trap "kill $COMFY_PID 2>/dev/null" SIGTERM SIGINT
-wait $COMFY_PID || true
+APP_PID=$!
+
+# Start periodic S3 sync
+start_periodic_sync
+
+# Wait for app — if it exits (crash), fall through to keep-alive
+wait $APP_PID || true
 
 echo "============================================="
 echo "  ComfyUI crashed — check the logs above."
@@ -68,4 +89,5 @@ echo "  To restart after fixing:"
 echo "    cd $COMFYUI_DIR && python main.py $FIXED_ARGS"
 echo "============================================="
 
-sleep infinity
+# Block forever while allowing traps to fire
+while true; do sleep 86400 & wait $!; done
