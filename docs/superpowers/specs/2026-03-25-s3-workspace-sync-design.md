@@ -109,7 +109,7 @@ shutdown() {
     set +e  # Disable set -e so kill failures don't abort the handler
     kill $APP_PID 2>/dev/null
     kill $SYNC_PID 2>/dev/null
-    sync_upload
+    sync_upload wait
     exit 0
 }
 trap 'shutdown' SIGTERM SIGINT
