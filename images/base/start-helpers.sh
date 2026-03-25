@@ -39,7 +39,7 @@ export_env_vars() {
     mkdir -p /root/.ssh
     >"$SSH_ENV_DIR"
 
-    printenv | grep -E '^RUNPOD_|^PATH=|^_=|^CUDA|^LD_LIBRARY_PATH|^PYTHONPATH|^RCLONE_|^SYNC_' | while read -r line; do
+    printenv | grep -E '^RUNPOD_|^PATH=|^_=|^CUDA|^LD_LIBRARY_PATH|^PYTHONPATH|^RCLONE_|^S3_|^SYNC_' | while read -r line; do
         name=$(echo "$line" | cut -d= -f1)
         value=$(echo "$line" | cut -d= -f2-)
 
@@ -101,14 +101,18 @@ start_jupyter() {
 
 # Configure S3 sync if credentials are present
 configure_sync() {
-    if [[ -z "${RCLONE_S3_ACCESS_KEY_ID:-}" ]] || [[ -z "${SYNC_BUCKET:-}" ]]; then
+    if [[ -z "${S3_ACCESS_KEY_ID:-}" ]] || [[ -z "${S3_BUCKET:-}" ]]; then
         SYNC_ENABLED=false
-        echo "S3 sync disabled (RCLONE_S3_ACCESS_KEY_ID or SYNC_BUCKET not set)"
+        echo "S3 sync disabled (S3_ACCESS_KEY_ID or S3_BUCKET not set)"
         return
     fi
 
+    # Map user-facing env vars to rclone's native RCLONE_ convention
+    export RCLONE_S3_ACCESS_KEY_ID="$S3_ACCESS_KEY_ID"
+    export RCLONE_S3_SECRET_ACCESS_KEY="${S3_SECRET_ACCESS_KEY:-}"
+
     SYNC_ENABLED=true
-    SYNC_REMOTE=":${RCLONE_REMOTE_TYPE:-s3}:${SYNC_BUCKET}"
+    SYNC_REMOTE=":${RCLONE_REMOTE_TYPE:-s3}:${S3_BUCKET}"
     SYNC_INTERVAL="${SYNC_INTERVAL:-600}"
     echo "S3 sync enabled: ${SYNC_REMOTE} (interval: ${SYNC_INTERVAL}s)"
 }
