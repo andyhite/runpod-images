@@ -96,3 +96,72 @@ start_jupyter() {
         --ServerApp.allow_origin=* &>/jupyter.log &
     echo "Jupyter Lab started"
 }
+
+# ---- S3 Workspace Sync ----
+
+# Configure S3 sync if credentials are present
+configure_sync() {
+    if [[ -z "${RCLONE_S3_ACCESS_KEY_ID:-}" ]] || [[ -z "${SYNC_BUCKET:-}" ]]; then
+        SYNC_ENABLED=false
+        echo "S3 sync disabled (RCLONE_S3_ACCESS_KEY_ID or SYNC_BUCKET not set)"
+        return
+    fi
+
+    SYNC_ENABLED=true
+    SYNC_REMOTE=":${RCLONE_REMOTE_TYPE:-s3}:${SYNC_BUCKET}"
+    SYNC_INTERVAL="${SYNC_INTERVAL:-600}"
+    echo "S3 sync enabled: ${SYNC_REMOTE} (interval: ${SYNC_INTERVAL}s)"
+}
+
+# Download workspace from S3 (uses rclone copy — never deletes local files)
+sync_download() {
+    if [[ "$SYNC_ENABLED" != "true" ]]; then return; fi
+
+    echo "Downloading workspace from S3..."
+    rclone copy "$SYNC_REMOTE" /workspace \
+        --transfers=16 \
+        --checkers=32 \
+        --s3-no-check-bucket \
+        --fast-list \
+        --stats=30s \
+        --stats-one-line \
+        || echo "WARNING: S3 download failed (see errors above). Continuing with local workspace."
+}
+
+# Upload workspace to S3 (uses rclone sync — mirrors local state, including deletions)
+# Pass "wait" as first argument to block until lock is available (used by shutdown handler).
+# Default is non-blocking: skip if another sync holds the lock (used by periodic sync).
+sync_upload() {
+    if [[ "$SYNC_ENABLED" != "true" ]]; then return; fi
+
+    local flock_flag="-n"
+    if [[ "${1:-}" == "wait" ]]; then
+        flock_flag=""
+        echo "Waiting for any in-progress sync to finish, then uploading workspace to S3..."
+    else
+        echo "Uploading workspace to S3..."
+    fi
+
+    flock $flock_flag /tmp/sync.lock rclone sync /workspace "$SYNC_REMOTE" \
+        --transfers=16 \
+        --checkers=32 \
+        --s3-no-check-bucket \
+        --fast-list \
+        --stats=30s \
+        --stats-one-line \
+        || echo "WARNING: S3 upload failed or skipped (lock held). Will retry next cycle."
+}
+
+# Start periodic background sync loop
+start_periodic_sync() {
+    if [[ "$SYNC_ENABLED" != "true" ]]; then return; fi
+
+    echo "Starting periodic S3 sync (every ${SYNC_INTERVAL}s)..."
+    (
+        while true; do
+            sleep "$SYNC_INTERVAL"
+            sync_upload
+        done
+    ) &
+    SYNC_PID=$!
+}
