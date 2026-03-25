@@ -74,6 +74,8 @@ ARG CUDA_VERSION_DASH=13-0
 # ---- FileBrowser version pin (set in docker-bake.hcl) ----
 ARG FILEBROWSER_VERSION
 ARG FILEBROWSER_SHA256
+ARG RCLONE_VERSION
+ARG RCLONE_SHA256
 
 # Update and install runtime dependencies, CUDA, and common tools
 RUN apt-get update && \
@@ -99,6 +101,7 @@ RUN apt-get update && \
   net-tools \
   iputils-ping \
   procps \
+  unzip \
   openssl \
   ffmpeg \
   && wget https://developer.download.nvidia.com/compute/cuda/repos/ubuntu2404/x86_64/cuda-keyring_1.1-1_all.deb \
@@ -125,6 +128,13 @@ RUN curl -fSL "https://github.com/filebrowser/filebrowser/releases/download/${FI
   echo "${FILEBROWSER_SHA256}  /tmp/fb.tar.gz" | sha256sum -c - && \
   tar xzf /tmp/fb.tar.gz -C /usr/local/bin filebrowser && \
   rm /tmp/fb.tar.gz
+
+# Install rclone (pinned version with checksum)
+RUN curl -fSL "https://downloads.rclone.org/${RCLONE_VERSION}/rclone-${RCLONE_VERSION}-linux-amd64.zip" -o /tmp/rclone.zip && \
+  echo "${RCLONE_SHA256}  /tmp/rclone.zip" | sha256sum -c - && \
+  unzip -j /tmp/rclone.zip "*/rclone" -d /usr/local/bin && \
+  chmod +x /usr/local/bin/rclone && \
+  rm /tmp/rclone.zip
 
 # Set CUDA environment variables
 ENV PATH=/usr/local/cuda/bin:${PATH}
