@@ -5,7 +5,6 @@ set -e
 source /start-helpers.sh
 
 COMFYUI_DIR="/workspace/comfyui"
-VENV_DIR="$COMFYUI_DIR/.venv-cu130"
 ARGS_FILE="$COMFYUI_DIR/comfyui_args.txt"
 
 # ---------------------------------------------------------------------------- #
@@ -19,66 +18,23 @@ init_filebrowser
 start_filebrowser
 start_jupyter
 
-# Migrate old venvs (.venv or .venv-cu128) to .venv-cu130
-for OLD_VENV_NAME in .venv .venv-cu128; do
-    OLD_VENV_DIR="$COMFYUI_DIR/$OLD_VENV_NAME"
-    if [ -d "$OLD_VENV_DIR" ] && [ ! -d "$VENV_DIR" ]; then
-        NODE_COUNT=$(find "$COMFYUI_DIR/custom_nodes" -maxdepth 2 -name "requirements.txt" 2>/dev/null | wc -l)
-        echo "============================================="
-        echo "  CUDA migration: $OLD_VENV_NAME -> .venv-cu130"
-        echo "  Reinstalling deps for $NODE_COUNT custom nodes"
-        echo "  This may take several minutes"
-        echo "============================================="
-        mv "$OLD_VENV_DIR" "${OLD_VENV_DIR}.bak"
-        cd "$COMFYUI_DIR"
-        python3.12 -m venv --system-site-packages "$VENV_DIR"
-        source "$VENV_DIR/bin/activate"
-        python -m ensurepip
-        BAKED_NODES="ComfyUI-Manager ComfyUI-KJNodes Civicomfy ComfyUI-RunpodDirect"
-        CURRENT=0
-        INSTALLED=0
-        for req in "$COMFYUI_DIR"/custom_nodes/*/requirements.txt; do
-            if [ -f "$req" ]; then
-                NODE_NAME=$(basename "$(dirname "$req")")
-                case " $BAKED_NODES " in
-                *" $NODE_NAME "*) continue ;;
-                esac
-                CURRENT=$((CURRENT + 1))
-                echo "[$CURRENT] $NODE_NAME"
-                pip install -r "$req" 2>&1 | grep -E "^(Successfully|ERROR)" || true
-                INSTALLED=$((INSTALLED + 1))
-            fi
-        done
-        echo "Upgrading ComfyUI requirements..."
-        pip install --upgrade -r "$COMFYUI_DIR/requirements.txt" 2>&1 | grep -E "^(Successfully|ERROR)" || true
-        echo "Migration complete — $INSTALLED user nodes processed (${NODE_COUNT} total, baked nodes skipped)"
-        echo "Old venv backed up at ${OLD_VENV_DIR}.bak — delete it to free space:"
-        echo "  rm -rf ${OLD_VENV_DIR}.bak"
-        break
-    fi
-done
-
 # Setup ComfyUI if needed
-if [ ! -d "$COMFYUI_DIR" ] || [ ! -d "$VENV_DIR" ]; then
+if [ ! -d "$COMFYUI_DIR" ]; then
     echo "First time setup: Copying baked ComfyUI to workspace..."
-
-    if [ ! -d "$COMFYUI_DIR" ]; then
-        cp -r /opt/comfyui-baked "$COMFYUI_DIR"
-        echo "ComfyUI copied to workspace"
-    fi
-
-    if [ ! -d "$VENV_DIR" ]; then
-        cd "$COMFYUI_DIR"
-        python3.12 -m venv --system-site-packages "$VENV_DIR"
-        source "$VENV_DIR/bin/activate"
-        python -m ensurepip
-        echo "Base packages (torch, numpy, etc.) available from system site-packages"
-        echo "ComfyUI ready — all dependencies pre-installed in image"
-    fi
+    cp -r /opt/comfyui-baked "$COMFYUI_DIR"
+    echo "ComfyUI copied to workspace"
 else
-    source "$VENV_DIR/bin/activate"
     echo "Using existing ComfyUI installation"
 fi
+
+# Install/update dependencies
+echo "Installing/updating ComfyUI dependencies..."
+pip install --no-cache-dir -r "$COMFYUI_DIR/requirements.txt" 2>&1 | tail -1
+for req in "$COMFYUI_DIR"/custom_nodes/*/requirements.txt; do
+    if [ -f "$req" ]; then
+        pip install --no-cache-dir -r "$req" 2>&1 | tail -1
+    fi
+done
 
 # Create default comfyui_args.txt if it doesn't exist
 if [ ! -f "$ARGS_FILE" ]; then
@@ -109,8 +65,7 @@ echo "============================================="
 echo "  ComfyUI crashed — check the logs above."
 echo "  SSH and JupyterLab are still available."
 echo "  To restart after fixing:"
-echo "    cd $COMFYUI_DIR && source .venv-cu130/bin/activate"
-echo "    python main.py $FIXED_ARGS"
+echo "    cd $COMFYUI_DIR && python main.py $FIXED_ARGS"
 echo "============================================="
 
 sleep infinity
