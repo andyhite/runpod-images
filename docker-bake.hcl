@@ -48,6 +48,9 @@ variable "RCLONE_VERSION" {
 variable "OLLAMA_VERSION" {
   default = "v0.9.0"
 }
+variable "OLLAMA_SHA256" {
+  default = "ae9cebd61552d6cf3c527cb88e3a4865a25f22950aa8bb5328887ffd96cfd22a"
+}
 
 # Custom node hashes (run scripts/fetch-hashes.sh to update)
 variable "CIVICOMFY_SHA" {
@@ -156,6 +159,7 @@ target "ollama" {
     "andyhite/runpod-ollama:latest"
   ]
   args = {
+    OLLAMA_SHA256  = OLLAMA_SHA256
     OLLAMA_VERSION = OLLAMA_VERSION
   }
 }

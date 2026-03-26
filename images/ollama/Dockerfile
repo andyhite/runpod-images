@@ -3,9 +3,11 @@
 # ============================================================================
 FROM base-core
 
-# Install Ollama (pinned version)
+# Install Ollama (pinned version with checksum)
 ARG OLLAMA_VERSION
+ARG OLLAMA_SHA256
 RUN curl -fSL "https://github.com/ollama/ollama/releases/download/${OLLAMA_VERSION}/ollama-linux-amd64.tgz" -o /tmp/ollama.tgz && \
+  echo "${OLLAMA_SHA256}  /tmp/ollama.tgz" | sha256sum -c - && \
   tar xzf /tmp/ollama.tgz -C /usr && \
   rm /tmp/ollama.tgz
 
