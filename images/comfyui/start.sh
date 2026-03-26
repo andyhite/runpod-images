@@ -67,7 +67,7 @@ trap 'shutdown' SIGTERM SIGINT
 cd $COMFYUI_DIR
 FIXED_ARGS="--listen 0.0.0.0 --port 8188"
 if [ -s "$ARGS_FILE" ]; then
-    CUSTOM_ARGS=$(grep -v '^#' "$ARGS_FILE" | tr '\n' ' ')
+    CUSTOM_ARGS=$(grep -v '^#' "$ARGS_FILE" | tr '\n' ' ' || true)
     if [ ! -z "$CUSTOM_ARGS" ]; then
         FIXED_ARGS="$FIXED_ARGS $CUSTOM_ARGS"
     fi
