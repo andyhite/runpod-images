@@ -139,8 +139,10 @@ sync_download() {
         --checkers=32 \
         --s3-no-check-bucket \
         --fast-list \
-        --stats=30s \
+        --stats=10s \
         --stats-one-line \
+        -v \
+        --log-file=/dev/stdout \
         || echo "WARNING: S3 download failed (see errors above). Continuing with local workspace."
 }
 
@@ -163,8 +165,10 @@ sync_upload() {
         --checkers=32 \
         --s3-no-check-bucket \
         --fast-list \
-        --stats=30s \
+        --stats=10s \
         --stats-one-line \
+        -v \
+        --log-file=/dev/stdout \
         || echo "WARNING: S3 upload failed or skipped (lock held). Will retry next cycle."
 }
 
