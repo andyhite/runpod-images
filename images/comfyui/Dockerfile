@@ -59,7 +59,9 @@ RUN cat ComfyUI/requirements.txt > requirements.in && \
   echo "torchvision==${TORCHVISION_VERSION}" >> constraints.txt && \
   echo "torchaudio==${TORCHAUDIO_VERSION}" >> constraints.txt && \
   echo "pillow>=12.1.1" >> constraints.txt && \
-  PIP_CONSTRAINT=constraints.txt pip-compile --generate-hashes --output-file=requirements.lock --strip-extras --allow-unsafe requirements.in && \
+  PIP_CONSTRAINT=constraints.txt pip-compile --generate-hashes --output-file=requirements.lock --strip-extras --allow-unsafe \
+    --no-emit-package torch --no-emit-package torchvision --no-emit-package torchaudio \
+    requirements.in && \
   python3.12 -m pip install --no-cache-dir --ignore-installed --require-hashes -r requirements.lock
 
 # Pre-populate ComfyUI-Manager cache so first cold start skips the slow registry fetch

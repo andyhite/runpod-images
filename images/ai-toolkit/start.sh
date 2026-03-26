@@ -33,9 +33,9 @@ fi
 # Download workspace from S3 (overlays on top of baked copy)
 sync_download
 
-# Install/update dependencies
+# Install/update dependencies (constrain PyTorch packages to prevent overwriting CUDA wheels)
 echo "Installing/updating AI Toolkit dependencies..."
-pip install --no-cache-dir -r "$AI_TOOLKIT_DIR/requirements.txt" 2>&1 | tail -1
+PIP_CONSTRAINT=/etc/pip-torch-constraints.txt pip install --no-cache-dir -r "$AI_TOOLKIT_DIR/requirements.txt" 2>&1 | tail -1
 
 # SIGTERM/SIGINT handler: final S3 upload before exit
 shutdown() {

@@ -136,6 +136,16 @@ RUN curl -fSL "https://downloads.rclone.org/${RCLONE_VERSION}/rclone-${RCLONE_VE
   chmod +x /usr/local/bin/rclone && \
   rm /tmp/rclone.zip
 
+# ---- PyTorch version pins (re-declared for runtime stage) ----
+ARG TORCH_VERSION
+ARG TORCHVISION_VERSION
+ARG TORCHAUDIO_VERSION
+
+# Pin PyTorch packages so runtime pip installs cannot overwrite the CUDA wheels
+RUN echo "torch==${TORCH_VERSION}" > /etc/pip-torch-constraints.txt && \
+  echo "torchvision==${TORCHVISION_VERSION}" >> /etc/pip-torch-constraints.txt && \
+  echo "torchaudio==${TORCHAUDIO_VERSION}" >> /etc/pip-torch-constraints.txt
+
 # Set CUDA and PyTorch library paths
 ENV PATH=/usr/local/cuda/bin:${PATH}
 ENV LD_LIBRARY_PATH=/usr/local/lib/python3.12/dist-packages/torch/lib:/usr/local/lib/python3.12/dist-packages/torchaudio/lib:/usr/local/cuda/lib64

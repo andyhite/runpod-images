@@ -22,8 +22,8 @@ RUN echo "Cache bust: ${CACHEBUST}" && \
 
 WORKDIR /tmp/build/ai-toolkit
 
-# Install Python dependencies
-RUN pip install --no-cache-dir -r requirements.txt && \
+# Install Python dependencies (constrain PyTorch packages to prevent overwriting CUDA wheels)
+RUN PIP_CONSTRAINT=/etc/pip-torch-constraints.txt pip install --no-cache-dir -r requirements.txt && \
   pip install setuptools==69.5.1 --no-cache-dir
 
 # Build UI

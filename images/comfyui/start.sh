@@ -34,12 +34,12 @@ fi
 # Download workspace from S3 (overlays on top of baked copy)
 sync_download
 
-# Install/update dependencies
+# Install/update dependencies (constrain PyTorch packages to prevent overwriting CUDA wheels)
 echo "Installing/updating ComfyUI dependencies..."
-pip install --no-cache-dir -r "$COMFYUI_DIR/requirements.txt" 2>&1 | tail -1
+PIP_CONSTRAINT=/etc/pip-torch-constraints.txt pip install --no-cache-dir -r "$COMFYUI_DIR/requirements.txt" 2>&1 | tail -1
 for req in "$COMFYUI_DIR"/custom_nodes/*/requirements.txt; do
     if [ -f "$req" ]; then
-        pip install --no-cache-dir -r "$req" 2>&1 | tail -1
+        PIP_CONSTRAINT=/etc/pip-torch-constraints.txt pip install --no-cache-dir -r "$req" 2>&1 | tail -1
     fi
 done
 
