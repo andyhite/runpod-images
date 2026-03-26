@@ -35,7 +35,7 @@ RUN apt-get update && \
 # Install pip and pip-tools for lock file generation
 RUN curl -sS https://bootstrap.pypa.io/get-pip.py -o get-pip.py && \
   python3.12 get-pip.py && \
-  python3.12 -m pip install --no-cache-dir pip-tools && \
+  python3.12 -m pip install --no-cache-dir "pip-tools>=7.0" && \
   rm get-pip.py
 
 # Set CUDA environment for building
