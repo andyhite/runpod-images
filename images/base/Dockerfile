@@ -154,7 +154,8 @@ RUN sed -i 's/#PermitRootLogin prohibit-password/PermitRootLogin yes/' /etc/ssh/
 
 # Set Python 3.12 as default
 RUN update-alternatives --install /usr/bin/python3 python3 /usr/bin/python3.12 1 && \
-  update-alternatives --set python3 /usr/bin/python3.12
+  update-alternatives --set python3 /usr/bin/python3.12 && \
+  ln -sf /usr/bin/python3 /usr/bin/python
 
 # Copy shared start helpers
 COPY images/base/start-helpers.sh /start-helpers.sh
