@@ -50,7 +50,7 @@ if [ ! -f "$ARGS_FILE" ]; then
 fi
 
 # Warm up pip so ComfyUI-Manager's 5s timeout check doesn't fail on cold start
-python -m pip --version >/dev/null 2>&1
+python -m pip --version
 
 # SIGTERM/SIGINT handler: final S3 upload before exit
 shutdown() {
