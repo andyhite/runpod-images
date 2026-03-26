@@ -136,9 +136,9 @@ RUN curl -fSL "https://downloads.rclone.org/${RCLONE_VERSION}/rclone-${RCLONE_VE
   chmod +x /usr/local/bin/rclone && \
   rm /tmp/rclone.zip
 
-# Set CUDA environment variables
+# Set CUDA and PyTorch library paths
 ENV PATH=/usr/local/cuda/bin:${PATH}
-ENV LD_LIBRARY_PATH=/usr/local/cuda/lib64
+ENV LD_LIBRARY_PATH=/usr/local/lib/python3.12/dist-packages/torch/lib:/usr/local/lib/python3.12/dist-packages/torchaudio/lib:/usr/local/cuda/lib64
 
 # Allow container to start on hosts with older CUDA drivers
 ENV NVIDIA_REQUIRE_CUDA=""
