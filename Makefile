@@ -31,26 +31,6 @@ else
 	BUILD_ID=$$(date +%Y%m%d%H%M%S) docker buildx bake --push
 endif
 
-# ============ Local Tools ============
-.PHONY: webui webui-stop
-
-WEBUI_PORT := 6969
-
-webui:                          ## Start Open WebUI connected to RunPod Ollama (requires POD_ID=<id>)
-ifndef POD_ID
-	$(error POD_ID is required, e.g., make webui POD_ID=9tyi30x1efy9f8)
-endif
-	docker run -d -p $(WEBUI_PORT):8080 \
-		-e OLLAMA_BASE_URL=https://$(POD_ID)-11434.proxy.runpod.net \
-		-v open-webui:/app/backend/data \
-		--name open-webui \
-		--restart always \
-		ghcr.io/open-webui/open-webui:main
-	@echo "Open WebUI running at http://localhost:$(WEBUI_PORT)"
-
-webui-stop:                     ## Stop and remove Open WebUI container
-	docker stop open-webui && docker rm open-webui
-
 # ============ Utilities ============
 .PHONY: clean help
 

@@ -47,6 +47,10 @@ echo "Waiting for Ollama to be ready..."
 until curl -s http://localhost:11434/api/tags > /dev/null 2>&1; do sleep 1; done
 echo "Ollama is ready. Pull a model with: ollama pull hermes3"
 
+# Start Open WebUI
+echo "Starting Open WebUI on port 6969..."
+OLLAMA_BASE_URL=http://localhost:11434 nohup open-webui serve --port 6969 --host 0.0.0.0 &>/open-webui.log &
+
 # Start periodic S3 sync
 start_periodic_sync
 
@@ -55,8 +59,8 @@ wait $APP_PID || true
 
 echo "============================================="
 echo "  Ollama crashed — check the logs above."
-echo "  SSH and FileBrowser are still available."
-echo "  To restart: ollama serve"
+echo "  SSH, FileBrowser, and Open WebUI are still"
+echo "  available. To restart: ollama serve"
 echo "============================================="
 
 # Block forever while allowing traps to fire
