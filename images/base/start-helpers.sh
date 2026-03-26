@@ -118,6 +118,9 @@ configure_sync() {
     # Map user-facing env vars to rclone's native RCLONE_ convention
     export RCLONE_S3_ACCESS_KEY_ID="$S3_ACCESS_KEY_ID"
     export RCLONE_S3_SECRET_ACCESS_KEY="${S3_SECRET_ACCESS_KEY:-}"
+    export RCLONE_S3_PROVIDER="${S3_PROVIDER:-AWS}"
+    export RCLONE_S3_REGION="${S3_REGION:-us-east-1}"
+    [[ -n "${S3_ENDPOINT:-}" ]] && export RCLONE_S3_ENDPOINT="$S3_ENDPOINT"
 
     SYNC_ENABLED=true
     SYNC_LOCAL="/workspace/${SYNC_SERVICE}"
