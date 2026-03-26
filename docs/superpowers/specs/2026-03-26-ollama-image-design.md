@@ -6,7 +6,7 @@ Add an Ollama service image for running local LLMs (e.g., hermes3) on RunPod, an
 
 ## Architecture: Two-Tier Base
 
-The current `images/base/` image gets split into two layers:
+The current `images/base/` image gets split into two layers. The `images/base/` directory is removed after the split.
 
 ### `base-core` (new — `images/base-core/Dockerfile`)
 
@@ -14,12 +14,13 @@ Universal RunPod foundation. Every service image inherits from this.
 
 **Contents (extracted from current base runtime stage):**
 - Ubuntu 24.04
-- Common system packages: git, curl, wget, nano, htop, tmux, less, net-tools, iputils-ping, procps, unzip, openssl, openssh-client, openssh-server, ca-certificates, gnupg, xz-utils
-- Python 3.12 (with `python3` and `python` symlinks, EXTERNALLY-MANAGED removed)
+- Common system packages: git, curl, wget, nano, htop, tmux, less, net-tools, iputils-ping, procps, unzip, openssl, openssh-client, openssh-server, ca-certificates, gnupg, xz-utils, ffmpeg
+- Python 3.12 with `python3.12-venv`, `python3.12-dev`, `build-essential`, `libssl-dev` (with `python3` and `python` symlinks, EXTERNALLY-MANAGED removed)
 - SSH server (configured for root login, host key generation deferred to runtime)
 - FileBrowser (pinned version with checksum, port 8080)
 - rclone (pinned version with checksum, for S3 workspace sync)
 - `start-helpers.sh` (shared shell functions: SSH, env export, FileBrowser, S3 sync)
+- NVIDIA env vars (`NVIDIA_VISIBLE_DEVICES=all`, `NVIDIA_DRIVER_CAPABILITIES=all`, `NVIDIA_REQUIRE_CUDA=""`, `NVIDIA_DISABLE_REQUIRE=true`) — GPU access is needed even without PyTorch (Ollama uses the GPU directly)
 - `/workspace` directory
 - Exposed ports: 22 (SSH), 8080 (FileBrowser)
 
@@ -32,14 +33,12 @@ Universal RunPod foundation. Every service image inherits from this.
 - CUDA/PyTorch environment variables (`LD_LIBRARY_PATH` torch/torchaudio paths, `TORCH_CUDA_ARCH_LIST`)
 - Jupyter port exposure (8888)
 
-**What stays but changes:**
-- `python3.12-dev` and `build-essential` stay in base-core (needed for pip installs in service images)
-- `libssl-dev` stays (build dependency)
-- `ffmpeg` stays (general utility)
-- NVIDIA env vars (`NVIDIA_VISIBLE_DEVICES=all`, `NVIDIA_DRIVER_CAPABILITIES=all`, `NVIDIA_REQUIRE_CUDA=""`, `NVIDIA_DISABLE_REQUIRE=true`) stay in base-core since GPU access is needed even without PyTorch (Ollama uses the GPU directly)
-
 **`start-helpers.sh` changes:**
-- `start_jupyter()` function stays in the file but is only called by services that have Jupyter installed. No code change needed — it's already opt-in (each `start.sh` chooses which helpers to call).
+- `start_jupyter()` function stays in the file but is only called by services that have Jupyter installed. Already opt-in (each `start.sh` chooses which helpers to call).
+- `export_env_vars()` grep pattern must be updated to include `^OLLAMA_` so that `OLLAMA_HOST` and `OLLAMA_MODELS` are exported to SSH sessions. Updated pattern:
+  ```
+  grep -E '^RUNPOD_|^PATH=|^_=|^CUDA|^LD_LIBRARY_PATH|^PYTHONPATH|^RCLONE_|^S3_|^SYNC_|^OLLAMA_'
+  ```
 
 ### `base-cuda` (renamed — `images/base-cuda/Dockerfile`)
 
@@ -48,13 +47,14 @@ ML-specific layer. Inherits from `base-core`.
 **Contents (everything removed from base-core, plus):**
 - `FROM base-core` (instead of `FROM ubuntu:24.04`)
 - Builder stage: CUDA toolkit, pip-tools, PyTorch wheel installation, Jupyter + extensions
-- Runtime additions: CUDA packages, Python packages from builder, Jupyter config, PyTorch constraints
+- Runtime additions: CUDA packages, Python packages from builder, Jupyter config, PyTorch constraints (`/etc/pip-torch-constraints.txt`)
 - CUDA/PyTorch-specific environment variables
 - Exposed port: 8888 (Jupyter)
 
+**Invariant:** ComfyUI and AI Toolkit **must** inherit from `base-cuda`, not `base-core`. Both depend on `/etc/pip-torch-constraints.txt` (created by base-cuda) for constraining PyTorch during pip installs.
+
 **Downstream impact:**
-- ComfyUI Dockerfile: `FROM base` → `FROM base-cuda` (functionally identical)
-- AI Toolkit Dockerfile: `FROM base` → `FROM base-cuda` (functionally identical)
+- To minimize the diff, the bake context key stays as `base` pointing to `base-cuda`: `contexts = { base = "target:base-cuda" }`. This way ComfyUI and AI Toolkit Dockerfiles keep `FROM base` unchanged.
 
 ## Ollama Service Image
 
@@ -63,8 +63,11 @@ ML-specific layer. Inherits from `base-core`.
 ```dockerfile
 FROM base-core
 
-# Install Ollama
-RUN curl -fsSL https://ollama.com/install.sh | sh
+# Install Ollama (pinned version)
+ARG OLLAMA_VERSION
+RUN curl -fSL "https://github.com/ollama/ollama/releases/download/${OLLAMA_VERSION}/ollama-linux-amd64.tgz" -o /tmp/ollama.tgz && \
+  tar xzf /tmp/ollama.tgz -C /usr && \
+  rm /tmp/ollama.tgz
 
 # Configure Ollama for remote access
 ENV OLLAMA_HOST=0.0.0.0
@@ -127,6 +130,11 @@ echo "Starting Ollama server..."
 ollama serve &
 APP_PID=$!
 
+# Wait for Ollama to be ready
+echo "Waiting for Ollama to be ready..."
+until curl -s http://localhost:11434/api/tags > /dev/null 2>&1; do sleep 1; done
+echo "Ollama is ready. Pull a model with: ollama pull hermes3"
+
 # Start periodic S3 sync
 start_periodic_sync
 
@@ -148,6 +156,12 @@ while true; do sleep 86400 & wait $!; done
 - No baked application copy (Ollama is installed system-wide, models download at runtime)
 - `OLLAMA_MODELS` env var points to `/workspace/ollama/models` so models persist and sync to S3
 - `OLLAMA_HOST=0.0.0.0` set at image level for remote access
+- Readiness check waits for Ollama API before logging "ready"
+
+**S3 sync considerations for large models:** LLM models are multi-gigabyte files. Users with large model collections should consider:
+- Increasing `SYNC_INTERVAL` (default 600s may trigger frequent large uploads)
+- Disabling S3 sync entirely if using RunPod network volumes for persistence
+- The sync uses `rclone sync` which mirrors local state including deletions — removing a model locally will remove it from S3 on next sync
 
 ## Build System Changes
 
@@ -156,13 +170,17 @@ while true; do sleep 86400 & wait $!; done
 New target structure:
 
 ```hcl
+# Ollama version pin
+variable "OLLAMA_VERSION" {
+  default = "v0.9.0"
+}
+
 # base-core: universal foundation (SSH, FileBrowser, rclone)
 target "base-core" {
   context    = "."
   dockerfile = "images/base-core/Dockerfile"
   platforms  = ["linux/amd64"]
   tags = [
-    "andyhite/runpod-base-core:${TAG}",
     "andyhite/runpod-base-core:latest"
   ]
   args = {
@@ -199,23 +217,27 @@ target "ollama" {
   dockerfile = "images/ollama/Dockerfile"
   platforms  = ["linux/amd64"]
   tags = [
-    "andyhite/runpod-ollama:${TAG}",
     "andyhite/runpod-ollama:latest"
   ]
+  args = {
+    OLLAMA_VERSION = OLLAMA_VERSION
+  }
 }
 
-# ComfyUI — inherits from base-cuda (unchanged behavior)
+# ComfyUI — inherits from base-cuda
+# Context key stays as "base" so Dockerfile keeps `FROM base` unchanged
 target "comfyui" {
   context    = "."
-  contexts   = { base-cuda = "target:base-cuda" }  # was: base = "target:base"
+  contexts   = { base = "target:base-cuda" }
   dockerfile = "images/comfyui/Dockerfile"
   # ... rest unchanged
 }
 
-# AI Toolkit — inherits from base-cuda (unchanged behavior)
+# AI Toolkit — inherits from base-cuda
+# Context key stays as "base" so Dockerfile keeps `FROM base` unchanged
 target "ai-toolkit" {
   context    = "."
-  contexts   = { base-cuda = "target:base-cuda" }  # was: base = "target:base"
+  contexts   = { base = "target:base-cuda" }
   dockerfile = "images/ai-toolkit/Dockerfile"
   # ... rest unchanged
 }
@@ -226,11 +248,7 @@ group "default" {
 }
 ```
 
-**TAG variable:** The current `TAG` defaults to `cuda${CUDA_VERSION}`. For the Ollama image (no CUDA), this tag is misleading. Options:
-- Keep it simple: Ollama target overrides with a plain tag like `latest` only
-- Or change the default TAG to something version-neutral
-
-Since Ollama doesn't have a meaningful version pin (installed via script), using just `latest` is fine for now.
+**TAG handling:** The `cuda${CUDA_VERSION}` tag applies to base-cuda and its downstream images. The Ollama image uses only `latest` since it has no CUDA version dimension. The base-core image also uses only `latest`.
 
 ### Directory Structure (after changes)
 
@@ -244,24 +262,34 @@ images/
 ├── ollama/                 # NEW: Ollama service
 │   ├── Dockerfile
 │   └── start.sh
-├── comfyui/                # UPDATED: FROM base → FROM base-cuda
+├── comfyui/                # UNCHANGED (FROM base still works via bake context key)
 │   ├── Dockerfile
 │   ├── start.sh
 │   └── scripts/
 │       └── prebake-manager-cache.py
-└── ai-toolkit/             # UPDATED: FROM base → FROM base-cuda
+└── ai-toolkit/             # UNCHANGED (FROM base still works via bake context key)
     ├── Dockerfile
     └── start.sh
 ```
 
+The old `images/base/` directory is removed.
+
 ## What Does NOT Change
 
-- `start-helpers.sh` — no code changes needed. Functions are already opt-in.
 - `Makefile` — already supports `SERVICE=<name>` for any target. No changes needed.
 - `.env.example` — no new env vars required (OLLAMA_HOST and OLLAMA_MODELS are set in the Dockerfile).
 - `scripts/fetch-hashes.sh` — Ollama has no pinned commit hashes.
+- ComfyUI/AI Toolkit Dockerfiles — `FROM base` unchanged (bake context key preserved).
 - ComfyUI/AI Toolkit `start.sh` scripts — no changes needed.
 - ComfyUI/AI Toolkit runtime behavior — functionally identical after the split.
+
+## What DOES Change
+
+- `images/base/` → split into `images/base-core/` and `images/base-cuda/`
+- `start-helpers.sh` — `export_env_vars()` grep pattern updated to include `^OLLAMA_`
+- `docker-bake.hcl` — new `base-core` and `ollama` targets; `base` target renamed to `base-cuda`; ComfyUI/AI Toolkit contexts updated to `{ base = "target:base-cuda" }`
+- `start-helpers.sh` moved from `images/base/` to `images/base-core/`
+- `COPY` path in `base-core` Dockerfile updated to `images/base-core/start-helpers.sh`
 
 ## Ports Summary
 
@@ -282,3 +310,12 @@ images/
 | `OLLAMA_MODELS` | `/workspace/ollama/models` | Model storage directory (set in Dockerfile) |
 
 All existing env vars (S3_*, RUNPOD_*, PUBLIC_KEY, etc.) work unchanged via base-core.
+
+## Usage
+
+After deploying the Ollama image on RunPod:
+
+1. Connect via SSH or Web Terminal
+2. Pull a model: `ollama pull hermes3`
+3. Run interactively: `ollama run hermes3`
+4. Or connect remotely to the Ollama API on port 11434 (e.g., from SillyTavern or other clients)
