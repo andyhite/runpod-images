@@ -45,6 +45,9 @@ variable "RCLONE_SHA256" {
 variable "RCLONE_VERSION" {
   default = "v1.73.3"
 }
+variable "OLLAMA_VERSION" {
+  default = "v0.9.0"
+}
 
 # Custom node hashes (run scripts/fetch-hashes.sh to update)
 variable "CIVICOMFY_SHA" {
@@ -67,24 +70,37 @@ variable "TAG" {
 
 # Build groups
 group "default" {
-  targets = ["comfyui", "ai-toolkit"]
+  targets = ["comfyui", "ai-toolkit", "ollama"]
 }
 
-# Shared base image target
-target "base" {
+# Universal foundation (SSH, FileBrowser, rclone — no CUDA/PyTorch)
+target "base-core" {
   context    = "."
-  dockerfile = "images/base/Dockerfile"
+  dockerfile = "images/base-core/Dockerfile"
   platforms  = ["linux/amd64"]
   tags = [
-    "andyhite/runpod-base:${TAG}",
-    "andyhite/runpod-base:latest"
+    "andyhite/runpod-base-core:latest"
   ]
   args = {
-    CUDA_VERSION_DASH   = CUDA_VERSION_DASH
     FILEBROWSER_SHA256  = FILEBROWSER_SHA256
     FILEBROWSER_VERSION = FILEBROWSER_VERSION
     RCLONE_SHA256       = RCLONE_SHA256
     RCLONE_VERSION      = RCLONE_VERSION
+  }
+}
+
+# ML stack (CUDA, PyTorch, Jupyter) — inherits from base-core
+target "base-cuda" {
+  context    = "."
+  contexts   = { base-core = "target:base-core" }
+  dockerfile = "images/base-cuda/Dockerfile"
+  platforms  = ["linux/amd64"]
+  tags = [
+    "andyhite/runpod-base-cuda:${TAG}",
+    "andyhite/runpod-base-cuda:latest"
+  ]
+  args = {
+    CUDA_VERSION_DASH   = CUDA_VERSION_DASH
     TORCHAUDIO_VERSION  = TORCHAUDIO_VERSION
     TORCHVISION_VERSION = TORCHVISION_VERSION
     TORCH_INDEX_SUFFIX  = TORCH_INDEX_SUFFIX
@@ -95,7 +111,7 @@ target "base" {
 # ComfyUI service image
 target "comfyui" {
   context    = "."
-  contexts   = { base = "target:base" }
+  contexts   = { base = "target:base-cuda" }
   dockerfile = "images/comfyui/Dockerfile"
   platforms  = ["linux/amd64"]
   tags = [
@@ -117,7 +133,7 @@ target "comfyui" {
 # AI Toolkit service image
 target "ai-toolkit" {
   context    = "."
-  contexts   = { base = "target:base" }
+  contexts   = { base = "target:base-cuda" }
   dockerfile = "images/ai-toolkit/Dockerfile"
   platforms  = ["linux/amd64"]
   tags = [
@@ -127,5 +143,19 @@ target "ai-toolkit" {
   args = {
     AI_TOOLKIT_VERSION = AI_TOOLKIT_VERSION
     CACHEBUST          = ""
+  }
+}
+
+# Ollama service image — inherits from base-core (no CUDA/PyTorch)
+target "ollama" {
+  context    = "."
+  contexts   = { base-core = "target:base-core" }
+  dockerfile = "images/ollama/Dockerfile"
+  platforms  = ["linux/amd64"]
+  tags = [
+    "andyhite/runpod-ollama:latest"
+  ]
+  args = {
+    OLLAMA_VERSION = OLLAMA_VERSION
   }
 }
