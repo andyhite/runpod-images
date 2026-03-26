@@ -156,6 +156,7 @@ target "ollama" {
   dockerfile = "images/ollama/Dockerfile"
   platforms  = ["linux/amd64"]
   tags = [
+    "andyhite/runpod-ollama:${OLLAMA_VERSION}",
     "andyhite/runpod-ollama:latest"
   ]
   args = {
