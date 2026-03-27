@@ -6,10 +6,11 @@ FROM base-core
 # Install Ollama (pinned version with checksum)
 ARG OLLAMA_VERSION
 ARG OLLAMA_SHA256
-RUN curl -fSL "https://github.com/ollama/ollama/releases/download/${OLLAMA_VERSION}/ollama-linux-amd64.tgz" -o /tmp/ollama.tgz && \
-  echo "${OLLAMA_SHA256}  /tmp/ollama.tgz" | sha256sum -c - && \
-  tar xzf /tmp/ollama.tgz -C /usr && \
-  rm /tmp/ollama.tgz
+RUN apt-get update && apt-get install -y --no-install-recommends zstd && apt-get clean && rm -rf /var/lib/apt/lists/* && \
+  curl -fSL "https://github.com/ollama/ollama/releases/download/${OLLAMA_VERSION}/ollama-linux-amd64.tar.zst" -o /tmp/ollama.tar.zst && \
+  echo "${OLLAMA_SHA256}  /tmp/ollama.tar.zst" | sha256sum -c - && \
+  tar --use-compress-program=unzstd -xf /tmp/ollama.tar.zst -C /usr && \
+  rm /tmp/ollama.tar.zst
 
 # Install Open WebUI
 RUN pip install --no-cache-dir open-webui

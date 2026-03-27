@@ -46,10 +46,10 @@ variable "RCLONE_VERSION" {
   default = "v1.73.3"
 }
 variable "OLLAMA_VERSION" {
-  default = "v0.9.6"
+  default = "v0.18.3"
 }
 variable "OLLAMA_SHA256" {
-  default = "e6cf44273391ad14835e556627a77f0e80bd18f3cdddca38ef5be215710e1871"
+  default = "7b3fb22f2e01a17f03ec0ac88a0b070ee2d7481030e735337ac8c02b84b5e66e"
 }
 
 # Custom node hashes (run scripts/fetch-hashes.sh to update)
