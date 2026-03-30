@@ -20,8 +20,9 @@ export_env_vars
 init_filebrowser
 start_filebrowser
 
-# Create ollama directory if needed
+# Create ollama directories if needed
 mkdir -p "$OLLAMA_DIR/models"
+mkdir -p "$OLLAMA_DIR/open-webui"
 
 # Download workspace from S3 (restores previously synced models)
 sync_download

@@ -21,6 +21,9 @@ ENV OLLAMA_HOST=0.0.0.0
 # Store models on persistent workspace
 ENV OLLAMA_MODELS=/workspace/ollama/models
 
+# Store Open WebUI data (accounts, chat history, settings) on persistent workspace
+ENV DATA_DIR=/workspace/ollama/open-webui
+
 # Expose Ollama API and Open WebUI ports
 EXPOSE 11434 6969
 
